@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pmt_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pmt_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pmt_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pmt_db}
+    ports:
+      - '${POSTGRES_PORT:-5434}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-pmt_user} -d ${POSTGRES_DB:-pmt_db}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - pmt_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    image: pmt-backend:latest
+    container_name: pmt_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pmt_user}:${POSTGRES_PASSWORD:-pmt_password}@postgres:5432/${POSTGRES_DB:-pmt_db}
+      JWT_SECRET: ${JWT_SECRET:-changeme_jwt_secret_min32chars_____}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-changeme_refresh_secret_min32chars__}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      COOKIE_SECRET: ${COOKIE_SECRET:-changeme_cookie_secret_min32chars__}
+      CSRF_SECRET: ${CSRF_SECRET:-changeme_csrf_secret_min32chars_____}
+    ports:
+      - '${BACKEND_PORT:-3001}:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pmt_network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    image: pmt-frontend:latest
+    container_name: pmt_frontend
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-8080}:80'
+    depends_on:
+      - backend
+    networks:
+      - pmt_network
+
+  # Optional: pgAdmin UI for database management
+  # Start with: docker-compose --profile tools up -d
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pmt_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@pmt.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_password}
+    ports:
+      - '${PGADMIN_PORT:-5050}:80'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pmt_network
+    profiles:
+      - tools
+
+networks:
+  pmt_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -1,0 +1,49 @@
+{
+  "name": "PMT – Project Management Tool",
+  "short_name": "PMT",
+  "description": "Roadmap, Release Cadence, Productivity and Headcount tracking",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F5F7FA",
+  "theme_color": "#1565C0",
+  "categories": ["productivity", "business"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Portfolio overview"
+    },
+    {
+      "name": "Roadmap",
+      "url": "/roadmap",
+      "description": "Gantt & Feature Timeline"
+    },
+    {
+      "name": "Release Cadence",
+      "url": "/release-cadence",
+      "description": "Release plans and sprint calendars"
+    }
+  ]
+}

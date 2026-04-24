@@ -1,0 +1,36 @@
+{
+  "name": "pmt",
+  "version": "1.0.0",
+  "description": "Project Management Tool – Roadmap, Release Cadence, Productivity & Headcount Reporting",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "backend": "npm run start:dev -w @pmt/backend",
+    "frontend": "npm run dev -w @pmt/frontend",
+    "build:backend": "npm run build -w @pmt/backend",
+    "build:frontend": "npm run build -w @pmt/frontend",
+    "db:up": "docker-compose up -d postgres",
+    "db:down": "docker-compose down",
+    "db:logs": "docker-compose logs -f postgres",
+    "db:migrate": "npm run prisma:migrate -w @pmt/backend",
+    "db:migrate:prod": "npm run prisma:migrate:prod -w @pmt/backend",
+    "db:seed": "npm run prisma:seed -w @pmt/backend",
+    "db:reset": "npm run prisma:reset -w @pmt/backend",
+    "db:studio": "npm run prisma:studio -w @pmt/backend",
+    "db:setup": "node scripts/setup-db.mjs",
+    "test:backend": "npm run test -w @pmt/backend",
+    "test:frontend": "npm run test -w @pmt/frontend",
+    "lint:backend": "npm run lint -w @pmt/backend",
+    "lint:frontend": "npm run lint -w @pmt/frontend"
+  },
+  "devDependencies": {
+    "wait-on": "^7.2.0"
+  }
+}

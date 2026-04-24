@@ -1,0 +1,548 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ReleaseType {
+  MAJOR
+  MINOR
+}
+
+enum ReleaseStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DELAYED
+  AT_RISK
+}
+
+enum MilestoneType {
+  BACKLOG_GROOMING
+  SPRINT_PLANNING
+  BACKLOG_READINESS
+  DEVELOPMENT_START
+  DEVELOPMENT_END
+  CODE_FREEZE
+  REGRESSION_START
+  REGRESSION_END
+  GO_NO_GO
+  PRODUCTION_LIVE
+  POST_RELEASE_REVIEW
+}
+
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+  AT_RISK
+  SKIPPED
+}
+
+enum CadenceMode {
+  SPRINT_BASED
+  GROUPED_SPRINT
+  DATE_RANGE
+}
+
+enum ChartType {
+  BAR
+  STACKED_BAR
+  LINE
+  AREA
+  PIE
+  DONUT
+  WATERFALL
+  SCATTER
+  GANTT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  SOFT_DELETE
+  RESTORE
+  LOGIN
+  LOGOUT
+}
+
+enum FeatureStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+// ─── Users & Auth ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  username      String     @unique
+  passwordHash  String     @map("password_hash")
+  firstName     String     @map("first_name")
+  lastName      String     @map("last_name")
+  status        UserStatus @default(ACTIVE)
+  tokenVersion  Int        @default(0) @map("token_version")
+  lastLoginAt   DateTime?  @map("last_login_at")
+  deletedAt     DateTime?  @map("deleted_at")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  createdBy     String?    @map("created_by")
+  updatedBy     String?    @map("updated_by")
+
+  userRoles           UserRole[]
+  teamMemberships     TeamMember[]
+  projectMemberships  ProjectMember[]
+  savedViews          SavedView[]
+  auditLogs           AuditLog[]
+  createdReleasePlans ReleasePlan[] @relation("ReleasePlanCreator")
+
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  isSystem    Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  resource    String
+  action      String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  grantedAt DateTime @default(now()) @map("granted_at")
+  grantedBy String?  @map("granted_by")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// ─── Projects & Teams ─────────────────────────────────────────────────────────
+
+model Project {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  code        String    @unique
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  // Headcount chart window settings persisted per project
+  headcountPastMonths   Int @default(6)  @map("headcount_past_months")
+  headcountFutureMonths Int @default(3)  @map("headcount_future_months")
+
+  teams               Team[]
+  releasePlans        ReleasePlan[]
+  headcountRecords    HeadcountRecord[]
+  productivityRecords ProductivityRecord[]
+  members             ProjectMember[]
+  features            Feature[]
+
+  @@index([isActive])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      String   @default("MEMBER") // ADMIN | MEMBER | VIEWER
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model Team {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  projectId   String    @map("project_id")
+  isActive    Boolean   @default(true) @map("is_active")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  project             Project              @relation(fields: [projectId], references: [id])
+  members             TeamMember[]
+  headcountRecords    HeadcountRecord[]
+  productivityRecords ProductivityRecord[]
+  releasePlans        ReleasePlan[]
+  features            Feature[]
+
+  @@unique([name, projectId])
+  @@index([projectId])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId   String    @map("team_id")
+  userId   String    @map("user_id")
+  role     String
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@map("team_members")
+}
+
+// ─── Sprint Calendar ──────────────────────────────────────────────────────────
+
+model SprintCalendar {
+  id                  String   @id @default(uuid())
+  name                String
+  projectId           String?  @map("project_id")
+  startDate           DateTime @map("start_date")
+  sprintLength        Int      @default(14) @map("sprint_length")
+  /// Day within sprint (1-based) when code freeze begins; null = no repeating template
+  codeFreezeOffset    Int?     @map("code_freeze_offset")
+  /// Day within sprint (1-based) when regression testing begins
+  regressionOffset    Int?     @map("regression_offset")
+  /// Day within sprint (1-based) when regression testing ends
+  regressionEndOffset Int?     @map("regression_end_offset")
+  /// Day within sprint (1-based) when Go/No-Go meeting starts
+  goNoGoOffset        Int?     @map("go_no_go_offset")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  sprints  Sprint[]
+  features Feature[]
+
+  @@map("sprint_calendars")
+}
+
+model Sprint {
+  id               String   @id @default(uuid())
+  sprintCalendarId String   @map("sprint_calendar_id")
+  name             String
+  number           Int
+  startDate        DateTime @map("start_date")
+  endDate          DateTime @map("end_date")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  sprintCalendar      SprintCalendar       @relation(fields: [sprintCalendarId], references: [id])
+  productivityRecords ProductivityRecord[]
+
+  @@unique([sprintCalendarId, number])
+  @@index([startDate, endDate])
+  @@map("sprints")
+}
+
+// ─── Release Plans & Milestones ───────────────────────────────────────────────
+
+model ReleasePlan {
+  id           String        @id @default(uuid())
+  name         String
+  description  String?
+  version      String
+  type         ReleaseType
+  status       ReleaseStatus @default(DRAFT)
+  projectId    String?       @map("project_id")
+  teamId       String?       @map("team_id")
+  cadenceMode  CadenceMode   @default(DATE_RANGE) @map("cadence_mode")
+  plannedStart DateTime      @map("planned_start")
+  plannedEnd   DateTime      @map("planned_end")
+  actualStart  DateTime?     @map("actual_start")
+  actualEnd    DateTime?     @map("actual_end")
+  // Links minor releases to a parent major release
+  parentId     String?       @map("parent_id")
+  deletedAt    DateTime?     @map("deleted_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  createdBy    String        @map("created_by")
+  updatedBy    String?       @map("updated_by")
+
+  project    Project?     @relation(fields: [projectId], references: [id])
+  team       Team?        @relation(fields: [teamId], references: [id])
+  creator    User         @relation("ReleasePlanCreator", fields: [createdBy], references: [id])
+  parent     ReleasePlan? @relation("ReleaseHierarchy", fields: [parentId], references: [id])
+  children   ReleasePlan[] @relation("ReleaseHierarchy")
+  milestones ReleaseMilestone[]
+  features   Feature[]
+
+  @@index([projectId, status])
+  @@index([type, status])
+  @@index([plannedStart, plannedEnd])
+  @@map("release_plans")
+}
+
+model ReleaseMilestone {
+  id            String          @id @default(uuid())
+  releasePlanId String          @map("release_plan_id")
+  type          MilestoneType
+  status        MilestoneStatus @default(NOT_STARTED)
+  plannedDate   DateTime        @map("planned_date")
+  actualDate    DateTime?       @map("actual_date")
+  notes         String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  createdBy     String?         @map("created_by")
+  updatedBy     String?         @map("updated_by")
+
+  releasePlan ReleasePlan @relation(fields: [releasePlanId], references: [id], onDelete: Cascade)
+
+  @@unique([releasePlanId, type])
+  @@index([releasePlanId])
+  @@map("release_milestones")
+}
+
+// ─── Productivity ─────────────────────────────────────────────────────────────
+
+model ProductivityMetricDefinition {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  key         String  @unique
+  description String?
+  unit        String?
+  isCustom    Boolean @default(false) @map("is_custom")
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  records ProductivityRecord[]
+
+  @@map("productivity_metric_definitions")
+}
+
+model ProductivityRecord {
+  id            String   @id @default(uuid())
+  metricDefId   String   @map("metric_def_id")
+  projectId     String?  @map("project_id")
+  teamId        String?  @map("team_id")
+  sprintId      String?  @map("sprint_id")
+  releasePlanId String?  @map("release_plan_id")
+  role          String?
+  workType      String?  @map("work_type")
+  period        DateTime // start date of sprint/month/week
+  planned       Decimal? @db.Decimal(10, 2)
+  actual        Decimal  @db.Decimal(10, 2)
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdBy     String?  @map("created_by")
+  updatedBy     String?  @map("updated_by")
+
+  metricDef ProductivityMetricDefinition @relation(fields: [metricDefId], references: [id])
+  project   Project?                     @relation(fields: [projectId], references: [id])
+  team      Team?                        @relation(fields: [teamId], references: [id])
+  sprint    Sprint?                      @relation(fields: [sprintId], references: [id])
+
+  @@index([projectId, period])
+  @@index([teamId, period])
+  @@index([sprintId])
+  @@index([metricDefId, period])
+  @@map("productivity_records")
+}
+
+// ─── Headcount ────────────────────────────────────────────────────────────────
+
+model HeadcountRecord {
+  id           String   @id @default(uuid())
+  projectId    String?  @map("project_id")
+  teamId       String?  @map("team_id")
+  role         String?
+  period       DateTime // first day of the month
+  openingCount Int      @map("opening_count")
+  addedCount   Int      @default(0) @map("added_count")
+  removedCount Int      @default(0) @map("removed_count")
+  closingCount Int      @map("closing_count")
+  plannedCount Int?     @map("planned_count")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by")
+  updatedBy    String?  @map("updated_by")
+
+  project Project? @relation(fields: [projectId], references: [id])
+  team    Team?    @relation(fields: [teamId], references: [id])
+
+  @@index([projectId, period])
+  @@index([teamId, period])
+  @@map("headcount_records")
+}
+
+// ─── Saved Views & Dashboard Config ──────────────────────────────────────────
+
+model SavedView {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  module      String    // 'roadmap' | 'productivity' | 'headcount' | 'release_cadence'
+  chartType   ChartType @map("chart_type")
+  config      Json      // Serialised chart/filter configuration
+  isDefault   Boolean   @default(false) @map("is_default")
+  isPublic    Boolean   @default(false) @map("is_public")
+  ownerId     String    @map("owner_id")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  owner      User             @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  sharedWith SavedViewShare[]
+
+  @@index([ownerId])
+  @@index([module])
+  @@map("saved_views")
+}
+
+model SavedViewShare {
+  savedViewId String   @map("saved_view_id")
+  userId      String   @map("user_id")
+  canEdit     Boolean  @default(false) @map("can_edit")
+  sharedAt    DateTime @default(now()) @map("shared_at")
+
+  savedView SavedView @relation(fields: [savedViewId], references: [id], onDelete: Cascade)
+
+  @@id([savedViewId, userId])
+  @@index([userId])
+  @@map("saved_view_shares")
+}
+
+model DashboardConfig {
+  id       String   @id @default(uuid())
+  name     String
+  userId   String?  @map("user_id")
+  isGlobal Boolean  @default(false) @map("is_global")
+  layout   Json     // widget positions and configurations
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("dashboard_configs")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  userId        String?     @map("user_id")
+  actorEmail    String?     @map("actor_email") // snapshot of user email at write time
+  action        AuditAction
+  resource      String
+  resourceId    String      @map("resource_id")
+  changes       Json?       // { before: {}, after: {} }
+  ipAddress     String?     @map("ip_address")
+  userAgent     String?     @map("user_agent")
+  correlationId String?     @map("correlation_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([resource, resourceId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Feature Timeline ─────────────────────────────────────────────────────────
+
+model Feature {
+  id               String        @id @default(uuid())
+  name             String
+  description      String?
+  projectId        String?       @map("project_id")
+  teamId           String?       @map("team_id")
+  /// User-defined grouping label shown in the timeline (e.g. "Enhancements", "Bug Fixing")
+  category         String?
+  sortOrder        Int           @default(0) @map("sort_order")
+  status           FeatureStatus @default(PLANNED)
+  releasePlanId    String?       @map("release_plan_id")
+  sprintCalendarId String?       @map("sprint_calendar_id")
+
+  // Phase 1 (e.g. Development)
+  phase1Label      String  @default("Development") @map("phase1_label")
+  phase1StartSprint Int?   @map("phase1_start_sprint")
+  phase1EndSprint   Int?   @map("phase1_end_sprint")
+  phase1Color      String  @default("#ff9800")      @map("phase1_color")
+
+  // Phase 2 (e.g. QA / Release)
+  phase2Label      String  @default("QA / Release") @map("phase2_label")
+  phase2StartSprint Int?   @map("phase2_start_sprint")
+  phase2EndSprint   Int?   @map("phase2_end_sprint")
+  phase2Color      String  @default("#4caf50")      @map("phase2_color")
+
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  createdBy  String?   @map("created_by")
+  updatedBy  String?   @map("updated_by")
+
+  project        Project?        @relation(fields: [projectId], references: [id])
+  team           Team?           @relation(fields: [teamId], references: [id])
+  releasePlan    ReleasePlan?    @relation(fields: [releasePlanId], references: [id])
+  sprintCalendar SprintCalendar? @relation(fields: [sprintCalendarId], references: [id])
+
+  @@index([projectId])
+  @@index([sprintCalendarId])
+  @@map("features")
+}
