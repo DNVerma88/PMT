@@ -44,7 +44,7 @@ const sprintMetricsService = {
     api.post<SprintSnapshot>('/sprint-metrics', payload).then((r) => r.data),
 
   getAll: (query?: SnapshotQuery) =>
-    api.get<{ items: SprintSnapshot[]; total: number; page: number; limit: number }>('/sprint-metrics', { params: query }).then((r) => r.data),
+    api.get<{ data: SprintSnapshot[]; meta: { total: number; page: number; limit: number; totalPages: number } }>('/sprint-metrics', { params: query }).then((r) => r.data),
 
   getLatest: (projectId?: string, teamId?: string) =>
     api.get<SprintSnapshot | null>('/sprint-metrics/latest', { params: { projectId, teamId } }).then((r) => r.data),

@@ -178,7 +178,7 @@ export function LeavesPage() {
       <Card variant="outlined">
         <CardHeader title={<Typography variant="subtitle1" fontWeight={600}><BeachAccess sx={{ verticalAlign: 'middle', mr: 1 }} />Leave Records</Typography>} />
         <CardContent sx={{ pt: 0 }}>
-          {isLoading ? <LoadingSpinner /> : !list?.items.length ? (
+          {isLoading ? <LoadingSpinner /> : !list?.data?.length ? (
             <EmptyState icon={<BeachAccess />} title="No leave records" description="Log team members' leave here." />
           ) : (
             <TableContainer component={Paper} variant="outlined">
@@ -195,7 +195,7 @@ export function LeavesPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {list.items.map((l) => (
+                  {list.data.map((l) => (
                     <TableRow key={l.id} hover>
                       <TableCell>{l.user ? `${l.user.firstName} ${l.user.lastName}` : '—'}</TableCell>
                       <TableCell><Chip label={typeLabel(l.leaveType)} size="small" /></TableCell>
