@@ -357,15 +357,15 @@ export function WsrPage() {
     enabled: !!activeProject,
   });
 
-  // Compute a 9-month window around the selected week for headcount time-series
-  const weekDate = new Date(weekOf);
-  const weekYM = `${weekDate.getFullYear()}-${String(weekDate.getMonth() + 1).padStart(2, '0')}`;
-  const periodFromDate = new Date(weekDate);
-  periodFromDate.setMonth(periodFromDate.getMonth() - 6);
-  const periodToDate = new Date(weekDate);
-  periodToDate.setMonth(periodToDate.getMonth() + 3);
-  const periodFrom = `${periodFromDate.getFullYear()}-${String(periodFromDate.getMonth() + 1).padStart(2, '0')}-01`;
-  const periodTo = `${periodToDate.getFullYear()}-${String(periodToDate.getMonth() + 1).padStart(2, '0')}-01`;
+  // Use the same window settings saved in HeadcountPage (today-relative, from project config)
+  const pastMonths   = activeProject?.headcountPastMonths   ?? 6;
+  const futureMonths = activeProject?.headcountFutureMonths ?? 3;
+  const today = new Date();
+  const currentYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const fromDate   = new Date(today.getFullYear(), today.getMonth() - pastMonths, 1);
+  const toDate     = new Date(today.getFullYear(), today.getMonth() + futureMonths, 1);
+  const periodFrom = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-01`;
+  const periodTo   = `${toDate.getFullYear()}-${String(toDate.getMonth() + 1).padStart(2, '0')}-01`;
 
   const { data: hcTimeSeries } = useQuery({
     queryKey: ['hc-timeseries', activeProject?.id, periodFrom, periodTo],
@@ -458,7 +458,7 @@ export function WsrPage() {
         const hcPeriods = filledData.map(fmtPeriod);
         const activeItems = filledData.map((d) => ({
           value: d.closing,
-          itemStyle: { color: new Date(d.period).toISOString().slice(0, 7) > weekYM || d._carried ? '#ffb74d' : '#f57c00' },
+          itemStyle: { color: new Date(d.period).toISOString().slice(0, 7) > currentYM || d._carried ? '#ffb74d' : '#f57c00' },
         }));
         const openItems = filledData.map((d) => ({ value: d._carried ? 0 : Math.max(0, (d.planned || 0) - d.closing), itemStyle: { color: '#9e9e9e' } }));
         const targetItems = filledData.map((d) => (d.planned > 0 ? d.planned : null));
@@ -472,7 +472,7 @@ export function WsrPage() {
               const d = filledData[idx];
               if (!d) return '';
               const ym = new Date(d.period).toISOString().slice(0, 7);
-              const isFuture = ym > weekYM;
+              const isFuture = ym > currentYM;
               const note = d._carried ? ' <i style="color:#f57c00">(carried)</i>' : isFuture ? ' <i style="color:#f57c00">(projected)</i>' : '';
               let html = `<b>${params[0].axisValue}</b>${note}<br/>`;
               html += `Active: <b>${d.closing}</b><br/>`;
