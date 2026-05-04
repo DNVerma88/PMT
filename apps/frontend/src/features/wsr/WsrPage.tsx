@@ -72,40 +72,6 @@ function InlineNote({
   );
 }
 
-// ─── Donut chart ──────────────────────────────────────────────────────────────
-
-function DonutChart({ title, counts, stateConfigs }: { title: string; counts: Record<string, number>; stateConfigs: StateConfig[] }) {
-  const data = stateConfigs
-    .filter((sc) => (counts[sc.key] ?? 0) > 0)
-    .map((sc) => ({ value: counts[sc.key] ?? 0, name: sc.label, itemStyle: { color: sc.color } }));
-
-  if (data.length === 0) {
-    return (
-      <Box sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}>
-        <Typography variant="body2">{title}: No data</Typography>
-      </Box>
-    );
-  }
-
-  return (
-    <Box>
-      <Typography variant="caption" fontWeight={600} color="text.secondary">{title}</Typography>
-      <ReactECharts
-        option={{
-          tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-          series: [{
-            type: 'pie', radius: ['35%', '65%'],
-            data,
-            label: { fontSize: 10 },
-            emphasis: { label: { show: true, fontWeight: 'bold' } },
-          }],
-        }}
-        style={{ height: 200 }}
-      />
-    </Box>
-  );
-}
-
 // ─── WSR Config Dialog ────────────────────────────────────────────────────────
 
 function ConfigDialog({ open, onClose, config, projectId }: { open: boolean; onClose: () => void; config: WsrConfig; projectId: string }) {
@@ -376,37 +342,60 @@ export function WsrPage() {
     switch (key) {
       case 'staffing': {
         if (!cfg?.showStaffing) return null;
-        const rows = (sections?.staffing ?? []) as Array<{ id: string; period?: string; role?: string; team?: { name: string }; openingCount?: number; addedCount?: number; removedCount?: number; closingCount?: number }>;
+        type HCRow = { id: string; period?: string; role?: string; team?: { name: string }; openingCount?: number; addedCount?: number; removedCount?: number; closingCount?: number; plannedCount?: number };
+        const rows = (sections?.staffing ?? []) as HCRow[];
+
+        // Build bar chart: group by period, sum closing counts
+        const periodMap = new Map<string, { closing: number; planned: number }>();
+        for (const r of rows) {
+          const p = r.period ? new Date(r.period).toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : '—';
+          const prev = periodMap.get(p) ?? { closing: 0, planned: 0 };
+          periodMap.set(p, {
+            closing: prev.closing + (r.closingCount ?? 0),
+            planned: prev.planned + (r.plannedCount ?? 0),
+          });
+        }
+        const periods = Array.from(periodMap.keys());
+        const closingVals = periods.map((p) => periodMap.get(p)!.closing);
+        const plannedVals = periods.map((p) => periodMap.get(p)!.planned || null);
+
+        const staffingOption = {
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: { data: ['Active', 'Target'], bottom: 0, itemWidth: 12, textStyle: { fontSize: 11 } },
+          grid: { left: 40, right: 20, top: 16, bottom: 48 },
+          xAxis: { type: 'category', data: periods, axisLabel: { fontSize: 10 } },
+          yAxis: { type: 'value', minInterval: 1 },
+          series: [
+            {
+              name: 'Active',
+              type: 'bar',
+              data: closingVals,
+              barMaxWidth: 48,
+              itemStyle: { color: '#1976d2' },
+              label: { show: true, position: 'inside', color: '#fff', fontWeight: 700, fontSize: 12 },
+            },
+            {
+              name: 'Target',
+              type: 'line',
+              data: plannedVals,
+              lineStyle: { type: 'dashed', color: '#f57c00', width: 2 },
+              itemStyle: { color: '#f57c00' },
+              symbol: 'diamond',
+              symbolSize: 8,
+              connectNulls: true,
+            },
+          ],
+        };
+
         return (
           <Grid item xs={12} md={6} key={key}>
             <Card variant="outlined" sx={{ height: '100%' }}>
               <CardHeader title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleStaffing ?? 'Staffing'}</Typography>} />
               <CardContent sx={{ pt: 0 }}>
                 {rows.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">No headcount data for selected range.</Typography>
+                  <Typography variant="body2" color="text.secondary">No headcount data available.</Typography>
                 ) : (
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead><TableRow>
-                        <TableCell>Period</TableCell><TableCell>Team</TableCell><TableCell>Role</TableCell>
-                        <TableCell align="right">Open</TableCell><TableCell align="right">+</TableCell>
-                        <TableCell align="right">−</TableCell><TableCell align="right">Close</TableCell>
-                      </TableRow></TableHead>
-                      <TableBody>
-                        {rows.slice(0, 10).map((r) => (
-                          <TableRow key={r.id}>
-                            <TableCell>{r.period ? new Date(r.period).toLocaleDateString('en', { month: 'short', year: 'numeric' }) : '—'}</TableCell>
-                            <TableCell>{r.team?.name ?? '—'}</TableCell>
-                            <TableCell>{r.role ?? '—'}</TableCell>
-                            <TableCell align="right">{r.openingCount}</TableCell>
-                            <TableCell align="right" sx={{ color: 'success.main' }}>{r.addedCount}</TableCell>
-                            <TableCell align="right" sx={{ color: 'error.main' }}>{r.removedCount}</TableCell>
-                            <TableCell align="right"><b>{r.closingCount}</b></TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                  <ReactECharts option={staffingOption} style={{ height: 260 }} />
                 )}
               </CardContent>
             </Card>
@@ -416,29 +405,75 @@ export function WsrPage() {
 
       case 'productivity': {
         if (!cfg?.showProductivity) return null;
-        const snap = sections?.productivity as (null | { sprintName?: string; snapshotDate?: string; storyStateCounts: Record<string, number>; bugStateCounts: Record<string, number> });
+        const snap = sections?.productivity as (null | { sprintName?: string; snapshotDate?: string; storyStateCounts: Record<string, number>; bugStateCounts: Record<string, number>; bugCountAtSprintStart?: number });
+
+        if (!snap) {
+          return (
+            <Grid item xs={12} md={6} key={key}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardHeader title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleProductivity ?? 'Sprint Productivity'}</Typography>} />
+                <CardContent>
+                  <Typography variant="body2" color="text.secondary">No sprint snapshot available.</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        }
+
+        // Story bar chart (horizontal)
+        const storyBarOption = {
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          grid: { left: 80, right: 40, top: 8, bottom: 8, containLabel: false },
+          xAxis: { type: 'value', splitLine: { show: false }, axisLabel: { show: false } },
+          yAxis: { type: 'category', data: storyConfigs.map((s) => s.label), axisLabel: { fontSize: 11 } },
+          series: [{
+            type: 'bar',
+            data: storyConfigs.map((s) => ({
+              value: snap.storyStateCounts?.[s.key] ?? 0,
+              itemStyle: { color: s.color },
+            })),
+            label: { show: true, position: 'right', fontSize: 12, fontWeight: 700 },
+            barMaxWidth: 32,
+          }],
+        };
+
+        const bugBarOption = {
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          grid: { left: 100, right: 40, top: 8, bottom: 8, containLabel: false },
+          xAxis: { type: 'value', splitLine: { show: false }, axisLabel: { show: false } },
+          yAxis: { type: 'category', data: bugConfigs.map((b) => b.label), axisLabel: { fontSize: 11 } },
+          series: [{
+            type: 'bar',
+            data: bugConfigs.map((b) => ({
+              value: snap.bugStateCounts?.[b.key] ?? 0,
+              itemStyle: { color: b.color },
+            })),
+            label: { show: true, position: 'right', fontSize: 12, fontWeight: 700 },
+            barMaxWidth: 32,
+          }],
+        };
+
+        const storyHeight = Math.max(100, storyConfigs.length * 36 + 20);
+        const bugHeight = Math.max(100, bugConfigs.length * 36 + 20);
+
         return (
           <Grid item xs={12} md={6} key={key}>
             <Card variant="outlined" sx={{ height: '100%' }}>
-              <CardHeader title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleProductivity ?? 'Sprint Productivity'}</Typography>} />
-              <CardContent>
-                {!snap ? (
-                  <Typography variant="body2" color="text.secondary">No sprint snapshot available.</Typography>
-                ) : (
-                  <Grid container spacing={1}>
-                    <Grid item xs={12}>
-                      <Typography variant="caption" color="text.secondary">
-                        {snap.sprintName ?? 'Latest sprint'} · {snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString() : ''}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6}>
-                      <DonutChart title="Stories" counts={snap.storyStateCounts} stateConfigs={storyConfigs} />
-                    </Grid>
-                    <Grid item xs={6}>
-                      <DonutChart title="Bugs" counts={snap.bugStateCounts} stateConfigs={bugConfigs} />
-                    </Grid>
-                  </Grid>
-                )}
+              <CardHeader
+                title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleProductivity ?? 'Sprint Productivity'}</Typography>}
+                subheader={
+                  <Typography variant="caption" color="text.secondary">
+                    {snap.sprintName ?? 'Latest sprint'}{snap.snapshotDate ? ` · ${new Date(snap.snapshotDate).toLocaleDateString()}` : ''}
+                    {snap.bugCountAtSprintStart ? ` · Bugs at start: ${snap.bugCountAtSprintStart}` : ''}
+                  </Typography>
+                }
+              />
+              <CardContent sx={{ pt: 0 }}>
+                <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={0.5}>User Stories</Typography>
+                <ReactECharts option={storyBarOption} style={{ height: storyHeight }} />
+                <Divider sx={{ my: 1.5 }} />
+                <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={0.5}>Bugs</Typography>
+                <ReactECharts option={bugBarOption} style={{ height: bugHeight }} />
               </CardContent>
             </Card>
           </Grid>
@@ -447,27 +482,80 @@ export function WsrPage() {
 
       case 'roadmap': {
         if (!cfg?.showRoadmap) return null;
-        const rm = sections?.roadmap as { features: Array<{ id: string; name: string; status: string; progress?: number }>; releases: Array<{ id: string; name: string; version?: string; status: string; plannedStart?: string; plannedEnd?: string }> };
+        type RmRelease = { id: string; name: string; version?: string; status: string; plannedStart?: string; plannedEnd?: string };
+        const rm = sections?.roadmap as { features: Array<{ id: string; name: string; status: string }>; releases: RmRelease[] };
+        const releases = rm?.releases ?? [];
+
+        const STATUS_COLOR: Record<string, string> = {
+          DRAFT: '#9e9e9e', PLANNED: '#2196f3', IN_PROGRESS: '#ff9800',
+          COMPLETED: '#4caf50', RELEASED: '#4caf50', CANCELLED: '#757575',
+          DELAYED: '#e91e63', AT_RISK: '#ff5722',
+        };
+
+        // Build a horizontal Gantt / timeline bar chart
+        const validReleases = releases.filter((r) => r.plannedStart && r.plannedEnd);
+
+        let ganttContent: React.ReactNode;
+        if (validReleases.length === 0) {
+          ganttContent = (
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {releases.length === 0
+                ? <Typography variant="body2" color="text.secondary">No releases found.</Typography>
+                : releases.map((r) => (
+                  <Chip key={r.id} size="small"
+                    label={`${r.name}${r.version ? ` v${r.version}` : ''} · ${r.status}`}
+                    sx={{ bgcolor: STATUS_COLOR[r.status] ?? '#607d8b', color: '#fff' }}
+                  />
+                ))}
+            </Stack>
+          );
+        } else {
+          const ganttOption = {
+            tooltip: {
+              formatter: (params: { data: { value: [number, string, string, string, string] } }) => {
+                const [, start, end, name, status] = params.data.value;
+                return `<b>${name}</b><br/>Status: ${status}<br/>${new Date(start).toLocaleDateString()} → ${new Date(end).toLocaleDateString()}`;
+              },
+            },
+            grid: { left: 140, right: 20, top: 10, bottom: 30 },
+            xAxis: { type: 'time', axisLabel: { fontSize: 10 } },
+            yAxis: {
+              type: 'category',
+              data: validReleases.map((r) => `${r.name}${r.version ? ` v${r.version}` : ''}`),
+              axisLabel: { fontSize: 11, width: 130, overflow: 'truncate' },
+            },
+            series: [{
+              type: 'custom',
+              renderItem: (_: unknown, api: { value: (i: number) => string | number; coord: (v: [number | string, number]) => [number, number]; size: (v: [number, number]) => [number, number]; style: (s: object) => object }) => {
+                const catIndex = api.value(0) as number;
+                const start = api.coord([api.value(1), catIndex]);
+                const end = api.coord([api.value(2), catIndex]);
+                const height = (api.size([0, 1]) as [number, number])[1] * 0.5;
+                const r = validReleases[catIndex];
+                return {
+                  type: 'rect',
+                  shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 6), height },
+                  style: api.style({ fill: STATUS_COLOR[r?.status] ?? '#607d8b' }),
+                };
+              },
+              encode: { x: [1, 2], y: 0 },
+              data: validReleases.map((r, i) => ({
+                value: [i, r.plannedStart!, r.plannedEnd!, r.name, r.status],
+                itemStyle: { color: STATUS_COLOR[r.status] ?? '#607d8b' },
+              })),
+            }],
+          };
+
+          const ganttHeight = Math.max(120, validReleases.length * 44 + 50);
+          ganttContent = <ReactECharts option={ganttOption} style={{ height: ganttHeight }} />;
+        }
+
         return (
           <Grid item xs={12} key={key}>
             <Card variant="outlined">
               <CardHeader title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleRoadmap ?? 'Roadmap'}</Typography>} />
               <CardContent sx={{ pt: 0 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.5}>Releases</Typography>
-                {!rm?.releases?.length ? (
-                  <Typography variant="body2" color="text.secondary">No releases found.</Typography>
-                ) : (
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    {rm.releases.map((r) => (
-                      <Chip
-                        key={r.id}
-                        label={`${r.name}${r.version ? ` v${r.version}` : ''} · ${r.status}`}
-                        size="small"
-                        color={r.status === 'RELEASED' ? 'success' : r.status === 'AT_RISK' ? 'error' : 'default'}
-                      />
-                    ))}
-                  </Stack>
-                )}
+                {ganttContent}
               </CardContent>
             </Card>
           </Grid>
