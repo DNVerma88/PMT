@@ -17,7 +17,7 @@ export class ExportsService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
-    this.exportDir = process.env.EXPORT_STORAGE_PATH ?? path.join(os.tmpdir(), 'pmt-exports');
+    this.exportDir = process.env.EXPORT_STORAGE_PATH || path.join(os.tmpdir(), 'pmt-exports');
     if (!fs.existsSync(this.exportDir)) {
       fs.mkdirSync(this.exportDir, { recursive: true });
     }
