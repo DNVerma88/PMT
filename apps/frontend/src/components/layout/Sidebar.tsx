@@ -20,12 +20,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Dashboard,
+  DashboardCustomize,
   Download,
   FolderOpen,
   Groups,
   NotificationsNone,
   RocketLaunch,
-  Timeline,
   ViewList,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -46,6 +46,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
+  { label: 'Portfolio', path: '/portfolio', icon: <DashboardCustomize /> },
   { label: 'Roadmap', path: '/roadmap', icon: <AccountTree /> },
   { label: 'Release Cadence', path: '/release-cadence', icon: <RocketLaunch /> },
   { label: 'Productivity', path: '/productivity', icon: <Assessment /> },
@@ -53,7 +54,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Saved Views', path: '/saved-views', icon: <ViewList /> },
   { label: 'Notifications', path: '/notifications', icon: <NotificationsNone /> },
   { label: 'Exports', path: '/exports', icon: <Download /> },
-  { label: 'Timeline', path: '/release-cadence', icon: <Timeline /> },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [

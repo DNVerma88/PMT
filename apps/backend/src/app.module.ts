@@ -22,6 +22,7 @@ import { HealthModule } from './health/health.module';
 import { FeaturesModule } from './features/features.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ExportsModule } from './exports/exports.module';
+import { PortfolioModule } from './portfolio/portfolio.module';
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { ExportsModule } from './exports/exports.module';
     FeaturesModule,
     NotificationsModule,
     ExportsModule,
+    PortfolioModule,
   ],
 })
 export class AppModule implements NestModule {
