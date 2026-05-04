@@ -14,6 +14,7 @@ const ProductivityPage = lazy(() => import('../features/productivity/Productivit
 const HeadcountPage = lazy(() => import('../features/headcount/HeadcountPage').then(m => ({ default: m.HeadcountPage })));
 const SavedViewsPage = lazy(() => import('../features/saved-views/SavedViewsPage').then(m => ({ default: m.SavedViewsPage })));
 const NotificationsPage = lazy(() => import('../features/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
+const ExportsPage = lazy(() => import('../features/exports/ExportsPage').then(m => ({ default: m.ExportsPage })));
 const AdminPage = lazy(() => import('../features/admin/AdminPage').then(m => ({ default: m.AdminPage })));
 const ProjectsPage = lazy(() => import('../features/projects/ProjectsPage').then(m => ({ default: m.ProjectsPage })));
 
@@ -65,6 +66,10 @@ export const router = createBrowserRouter([
       {
         path: 'notifications',
         element: <SuspenseWrapper><NotificationsPage /></SuspenseWrapper>,
+      },
+      {
+        path: 'exports',
+        element: <SuspenseWrapper><ExportsPage /></SuspenseWrapper>,
       },
       {
         path: 'admin',

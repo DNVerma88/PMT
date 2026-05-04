@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Dashboard,
+  Download,
   FolderOpen,
   Groups,
   NotificationsNone,
@@ -51,6 +52,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Headcount', path: '/headcount', icon: <Groups /> },
   { label: 'Saved Views', path: '/saved-views', icon: <ViewList /> },
   { label: 'Notifications', path: '/notifications', icon: <NotificationsNone /> },
+  { label: 'Exports', path: '/exports', icon: <Download /> },
   { label: 'Timeline', path: '/release-cadence', icon: <Timeline /> },
 ];
 

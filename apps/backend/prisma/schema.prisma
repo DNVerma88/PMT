@@ -97,6 +97,18 @@ enum NotificationType {
   MEMBER_ADDED
 }
 
+enum ExportFormat {
+  PDF
+  EXCEL
+  CSV
+}
+
+enum ExportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
 
 model User {
@@ -592,4 +604,24 @@ model NotificationPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_preferences")
+}
+
+// ─── Export Jobs ──────────────────────────────────────────────────────────────
+
+model ExportJob {
+  id         String       @id @default(uuid())
+  userId     String       @map("user_id")
+  reportType String       @map("report_type")
+  format     ExportFormat
+  status     ExportStatus @default(PENDING)
+  params     Json
+  filePath   String?      @map("file_path")
+  fileName   String?      @map("file_name")
+  errorMsg   String?      @map("error_msg")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  readyAt    DateTime?    @map("ready_at")
+  expiresAt  DateTime?    @map("expires_at")
+
+  @@index([userId, createdAt])
+  @@map("export_jobs")
 }
