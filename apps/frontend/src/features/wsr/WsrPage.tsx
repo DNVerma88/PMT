@@ -14,6 +14,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import wsrService, {
   type WsrConfig, type StateConfig, type LeaveTypeConfig, type UpsertConfigPayload,
 } from '../../services/wsr.service';
+import { headcountService } from '../../services/headcount.service';
+import sprintMetricsService from '../../services/sprint-metrics.service';
+import { roadmapService } from '../../services/roadmap.service';
 import { useProject } from '../../context/ProjectContext';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -269,6 +272,66 @@ function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function generateMonthRange(from: string, to: string): string[] {
+  const months: string[] = [];
+  const [fy, fm] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  let y = fy, m = fm;
+  while (y < ty || (y === ty && m <= tm)) {
+    months.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return months;
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  DRAFT: '#9e9e9e', PLANNED: '#2196f3', IN_PROGRESS: '#ff9800',
+  COMPLETED: '#4caf50', RELEASED: '#4caf50', CANCELLED: '#757575',
+  DELAYED: '#e91e63', AT_RISK: '#ff5722',
+};
+
+function buildGanttOption(rows: any[]) {
+  const flatRows: any[] = [];
+  for (const r of rows) {
+    flatRows.push({ ...r, indent: 0 });
+    for (const c of r.children ?? []) flatRows.push({ ...c, indent: 1 });
+  }
+  const categories = flatRows.map((r) => ({ name: r.indent ? `  ↳ ${r.name}` : r.name }));
+  const barData = flatRows.map((r, i) => ({
+    value: [i, r.plannedStart, r.plannedEnd, r.name, r.status],
+    itemStyle: { color: STATUS_COLOR[r.status] ?? '#607d8b', opacity: r.indent ? 0.7 : 1 },
+  }));
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        const [, start, end, name, status] = params.data.value;
+        return `<b>${name}</b><br/>Status: ${status}<br/>${new Date(start).toLocaleDateString()} → ${new Date(end).toLocaleDateString()}`;
+      },
+    },
+    grid: { left: 180, right: 20, top: 10, bottom: 30 },
+    xAxis: { type: 'time', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: categories.map((c) => c.name), axisLabel: { fontSize: 11, width: 170, overflow: 'truncate' } },
+    series: [{
+      type: 'custom',
+      renderItem: (_: any, api: any) => {
+        const catIndex = api.value(0);
+        const start = api.coord([api.value(1), catIndex]);
+        const end = api.coord([api.value(2), catIndex]);
+        const height = api.size([0, 1])[1] * 0.5;
+        return {
+          type: 'rect',
+          shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 6), height },
+          style: api.style({ fill: STATUS_COLOR[flatRows[catIndex]?.status] ?? '#607d8b' }),
+        };
+      },
+      encode: { x: [1, 2], y: 0 },
+      data: barData,
+    }],
+  };
+}
+
 // ─── Main WSR page ────────────────────────────────────────────────────────────
 
 export function WsrPage() {
@@ -291,6 +354,34 @@ export function WsrPage() {
   const { data: report, isLoading, error } = useQuery({
     queryKey: ['wsr-report', activeProject?.id, weekOf],
     queryFn: () => wsrService.assembleReport(activeProject!.id, new Date(weekOf).toISOString()),
+    enabled: !!activeProject,
+  });
+
+  // Compute a 9-month window around the selected week for headcount time-series
+  const weekDate = new Date(weekOf);
+  const weekYM = `${weekDate.getFullYear()}-${String(weekDate.getMonth() + 1).padStart(2, '0')}`;
+  const periodFromDate = new Date(weekDate);
+  periodFromDate.setMonth(periodFromDate.getMonth() - 6);
+  const periodToDate = new Date(weekDate);
+  periodToDate.setMonth(periodToDate.getMonth() + 3);
+  const periodFrom = `${periodFromDate.getFullYear()}-${String(periodFromDate.getMonth() + 1).padStart(2, '0')}-01`;
+  const periodTo = `${periodToDate.getFullYear()}-${String(periodToDate.getMonth() + 1).padStart(2, '0')}-01`;
+
+  const { data: hcTimeSeries } = useQuery({
+    queryKey: ['hc-timeseries', activeProject?.id, periodFrom, periodTo],
+    queryFn: () => headcountService.getTimeSeries({ projectId: activeProject!.id, periodFrom, periodTo }),
+    enabled: !!activeProject,
+  });
+
+  const { data: sprintLatest } = useQuery({
+    queryKey: ['sprint-latest', activeProject?.id],
+    queryFn: () => sprintMetricsService.getLatest(activeProject!.id),
+    enabled: !!activeProject,
+  });
+
+  const { data: ganttRows } = useQuery({
+    queryKey: ['roadmap-gantt', activeProject?.id],
+    queryFn: () => roadmapService.getGantt({ projectId: activeProject!.id }),
     enabled: !!activeProject,
   });
 
@@ -342,48 +433,67 @@ export function WsrPage() {
     switch (key) {
       case 'staffing': {
         if (!cfg?.showStaffing) return null;
-        type HCRow = { id: string; period?: string; role?: string; team?: { name: string }; openingCount?: number; addedCount?: number; removedCount?: number; closingCount?: number; plannedCount?: number };
-        const rows = (sections?.staffing ?? []) as HCRow[];
+        const tsData: any[] = hcTimeSeries ?? [];
 
-        // Build bar chart: group by period, sum closing counts
-        const periodMap = new Map<string, { closing: number; planned: number }>();
-        for (const r of rows) {
-          const p = r.period ? new Date(r.period).toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : '—';
-          const prev = periodMap.get(p) ?? { closing: 0, planned: 0 };
-          periodMap.set(p, {
-            closing: prev.closing + (r.closingCount ?? 0),
-            planned: prev.planned + (r.plannedCount ?? 0),
-          });
-        }
-        const periods = Array.from(periodMap.keys());
-        const closingVals = periods.map((p) => periodMap.get(p)!.closing);
-        const plannedVals = periods.map((p) => periodMap.get(p)!.planned || null);
+        // Build complete month range and forward/back-fill gaps (same logic as HeadcountPage)
+        const allMonths = generateMonthRange(periodFrom.slice(0, 7), periodTo.slice(0, 7));
+        const dataByYM = new Map(tsData.map((d) => [new Date(d.period).toISOString().slice(0, 7), d]));
+        const sortedRecords = [...tsData].sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
+        const firstYM = sortedRecords[0] ? new Date(sortedRecords[0].period).toISOString().slice(0, 7) : null;
+        const firstClosing = sortedRecords[0]?.closing ?? 0;
+        const firstPlanned = sortedRecords[0]?.planned ?? 0;
+        let lastClosing = 0, lastPlanned = 0;
+        const filledData = allMonths.map((ym) => {
+          const rec = dataByYM.get(ym);
+          if (rec) {
+            if (rec.closing > 0) lastClosing = rec.closing;
+            if (rec.planned > 0) lastPlanned = rec.planned;
+            return { ...rec, _carried: false };
+          }
+          if (firstYM && ym < firstYM) return { period: `${ym}-01`, opening: firstClosing, closing: firstClosing, added: 0, removed: 0, planned: firstPlanned, _carried: true };
+          return { period: `${ym}-01`, opening: lastClosing, closing: lastClosing, added: 0, removed: 0, planned: lastPlanned, _carried: true };
+        });
+
+        const fmtPeriod = (d: any) => new Date(d.period).toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+        const hcPeriods = filledData.map(fmtPeriod);
+        const activeItems = filledData.map((d) => ({
+          value: d.closing,
+          itemStyle: { color: new Date(d.period).toISOString().slice(0, 7) > weekYM || d._carried ? '#ffb74d' : '#f57c00' },
+        }));
+        const openItems = filledData.map((d) => ({ value: d._carried ? 0 : Math.max(0, (d.planned || 0) - d.closing), itemStyle: { color: '#9e9e9e' } }));
+        const targetItems = filledData.map((d) => (d.planned > 0 ? d.planned : null));
 
         const staffingOption = {
-          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-          legend: { data: ['Active', 'Target'], bottom: 0, itemWidth: 12, textStyle: { fontSize: 11 } },
+          tooltip: {
+            trigger: 'axis', axisPointer: { type: 'shadow' },
+            formatter: (params: any[]) => {
+              if (!params?.length) return '';
+              const idx = params[0]?.dataIndex;
+              const d = filledData[idx];
+              if (!d) return '';
+              const ym = new Date(d.period).toISOString().slice(0, 7);
+              const isFuture = ym > weekYM;
+              const note = d._carried ? ' <i style="color:#f57c00">(carried)</i>' : isFuture ? ' <i style="color:#f57c00">(projected)</i>' : '';
+              let html = `<b>${params[0].axisValue}</b>${note}<br/>`;
+              html += `Active: <b>${d.closing}</b><br/>`;
+              const open = d._carried ? 0 : Math.max(0, (d.planned || 0) - d.closing);
+              if (open > 0) html += `Open Positions: <b>+${open}</b><br/>`;
+              if (d.planned > 0) html += `Target: <b>${d.planned}</b><br/>`;
+              return html;
+            },
+          },
+          legend: { data: ['Active', 'Open', 'Target'], bottom: 0, itemWidth: 12, textStyle: { fontSize: 11 } },
           grid: { left: 40, right: 20, top: 16, bottom: 48 },
-          xAxis: { type: 'category', data: periods, axisLabel: { fontSize: 10 } },
+          xAxis: { type: 'category', data: hcPeriods, axisLabel: { fontSize: 10 } },
           yAxis: { type: 'value', minInterval: 1 },
           series: [
-            {
-              name: 'Active',
-              type: 'bar',
-              data: closingVals,
-              barMaxWidth: 48,
-              itemStyle: { color: '#1976d2' },
-              label: { show: true, position: 'inside', color: '#fff', fontWeight: 700, fontSize: 12 },
-            },
-            {
-              name: 'Target',
-              type: 'line',
-              data: plannedVals,
-              lineStyle: { type: 'dashed', color: '#f57c00', width: 2 },
-              itemStyle: { color: '#f57c00' },
-              symbol: 'diamond',
-              symbolSize: 8,
-              connectNulls: true,
-            },
+            { name: 'Active', type: 'bar', stack: 'hc', data: activeItems, barMaxWidth: 52,
+              label: { show: true, position: 'inside', color: '#fff', fontWeight: 700, fontSize: 12, formatter: (p: any) => p.value > 0 ? `${p.value}` : '' } },
+            { name: 'Open', type: 'bar', stack: 'hc', data: openItems, barMaxWidth: 52,
+              label: { show: true, position: 'top', fontSize: 11, fontWeight: 600, color: '#616161', formatter: (p: any) => p.value > 0 ? `${p.value}` : '' } },
+            { name: 'Target', type: 'line', data: targetItems,
+              lineStyle: { type: 'dashed', color: '#1a237e', width: 2.5 }, itemStyle: { color: '#1a237e' },
+              symbol: 'diamond', symbolSize: 9, connectNulls: true },
           ],
         };
 
@@ -392,10 +502,10 @@ export function WsrPage() {
             <Card variant="outlined" sx={{ height: '100%' }}>
               <CardHeader title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleStaffing ?? 'Staffing'}</Typography>} />
               <CardContent sx={{ pt: 0 }}>
-                {rows.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">No headcount data available.</Typography>
+                {tsData.length === 0 ? (
+                  <EmptyState title="No headcount data" description="Log headcount records in the Headcount module to see staffing trends" />
                 ) : (
-                  <ReactECharts option={staffingOption} style={{ height: 260 }} />
+                  <ReactECharts option={staffingOption} style={{ height: 280 }} />
                 )}
               </CardContent>
             </Card>
@@ -405,7 +515,8 @@ export function WsrPage() {
 
       case 'productivity': {
         if (!cfg?.showProductivity) return null;
-        const snap = sections?.productivity as (null | { sprintName?: string; snapshotDate?: string; storyStateCounts: Record<string, number>; bugStateCounts: Record<string, number>; bugCountAtSprintStart?: number });
+        // Use latest sprint snapshot from sprint-metrics module directly
+        const snap = sprintLatest ?? null;
 
         if (!snap) {
           return (
@@ -413,48 +524,29 @@ export function WsrPage() {
               <Card variant="outlined" sx={{ height: '100%' }}>
                 <CardHeader title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleProductivity ?? 'Sprint Productivity'}</Typography>} />
                 <CardContent>
-                  <Typography variant="body2" color="text.secondary">No sprint snapshot available.</Typography>
+                  <EmptyState title="No sprint snapshot" description="Log sprint metrics in the Sprint Metrics module to see productivity data" />
                 </CardContent>
               </Card>
             </Grid>
           );
         }
 
-        // Story bar chart (horizontal)
-        const storyBarOption = {
-          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-          grid: { left: 80, right: 40, top: 8, bottom: 8, containLabel: false },
-          xAxis: { type: 'value', splitLine: { show: false }, axisLabel: { show: false } },
-          yAxis: { type: 'category', data: storyConfigs.map((s) => s.label), axisLabel: { fontSize: 11 } },
-          series: [{
-            type: 'bar',
-            data: storyConfigs.map((s) => ({
-              value: snap.storyStateCounts?.[s.key] ?? 0,
-              itemStyle: { color: s.color },
-            })),
-            label: { show: true, position: 'right', fontSize: 12, fontWeight: 700 },
-            barMaxWidth: 32,
-          }],
-        };
+        // Story donut chart
+        const storyData = storyConfigs
+          .filter((s) => (snap.storyStateCounts?.[s.key] ?? 0) > 0)
+          .map((s) => ({ value: snap.storyStateCounts[s.key], name: s.label, itemStyle: { color: s.color } }));
+        const bugData = bugConfigs
+          .filter((b) => (snap.bugStateCounts?.[b.key] ?? 0) > 0)
+          .map((b) => ({ value: snap.bugStateCounts[b.key], name: b.label, itemStyle: { color: b.color } }));
 
-        const bugBarOption = {
-          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-          grid: { left: 100, right: 40, top: 8, bottom: 8, containLabel: false },
-          xAxis: { type: 'value', splitLine: { show: false }, axisLabel: { show: false } },
-          yAxis: { type: 'category', data: bugConfigs.map((b) => b.label), axisLabel: { fontSize: 11 } },
-          series: [{
-            type: 'bar',
-            data: bugConfigs.map((b) => ({
-              value: snap.bugStateCounts?.[b.key] ?? 0,
-              itemStyle: { color: b.color },
-            })),
-            label: { show: true, position: 'right', fontSize: 12, fontWeight: 700 },
-            barMaxWidth: 32,
-          }],
-        };
+        const totalStories = storyData.reduce((s, d) => s + d.value, 0);
+        const totalBugs = bugData.reduce((s, d) => s + d.value, 0);
 
-        const storyHeight = Math.max(100, storyConfigs.length * 36 + 20);
-        const bugHeight = Math.max(100, bugConfigs.length * 36 + 20);
+        const makeDonut = (data: any[]) => ({
+          tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+          series: [{ type: 'pie', radius: ['38%', '68%'], data,
+            label: { fontSize: 11 }, emphasis: { label: { show: true, fontWeight: 'bold' } } }],
+        });
 
         return (
           <Grid item xs={12} md={6} key={key}>
@@ -463,17 +555,31 @@ export function WsrPage() {
                 title={<Typography variant="subtitle1" fontWeight={700}>{cfg?.titleProductivity ?? 'Sprint Productivity'}</Typography>}
                 subheader={
                   <Typography variant="caption" color="text.secondary">
-                    {snap.sprintName ?? 'Latest sprint'}{snap.snapshotDate ? ` · ${new Date(snap.snapshotDate).toLocaleDateString()}` : ''}
-                    {snap.bugCountAtSprintStart ? ` · Bugs at start: ${snap.bugCountAtSprintStart}` : ''}
+                    {snap.sprintName ?? 'Latest sprint'}
+                    {snap.snapshotDate ? ` · ${new Date(snap.snapshotDate).toLocaleDateString()}` : ''}
+                    {snap.bugCountAtSprintStart ? ` · Bugs at sprint start: ${snap.bugCountAtSprintStart}` : ''}
                   </Typography>
                 }
               />
               <CardContent sx={{ pt: 0 }}>
-                <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={0.5}>User Stories</Typography>
-                <ReactECharts option={storyBarOption} style={{ height: storyHeight }} />
-                <Divider sx={{ my: 1.5 }} />
-                <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={0.5}>Bugs</Typography>
-                <ReactECharts option={bugBarOption} style={{ height: bugHeight }} />
+                <Grid container spacing={1}>
+                  <Grid item xs={6}>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" textAlign="center">
+                      Stories ({totalStories})
+                    </Typography>
+                    {storyData.length > 0
+                      ? <ReactECharts option={makeDonut(storyData)} style={{ height: 200 }} />
+                      : <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No data</Typography>}
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" textAlign="center">
+                      Bugs ({totalBugs})
+                    </Typography>
+                    {bugData.length > 0
+                      ? <ReactECharts option={makeDonut(bugData)} style={{ height: 200 }} />
+                      : <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No data</Typography>}
+                  </Grid>
+                </Grid>
               </CardContent>
             </Card>
           </Grid>
@@ -482,71 +588,16 @@ export function WsrPage() {
 
       case 'roadmap': {
         if (!cfg?.showRoadmap) return null;
-        type RmRelease = { id: string; name: string; version?: string; status: string; plannedStart?: string; plannedEnd?: string };
-        const rm = sections?.roadmap as { features: Array<{ id: string; name: string; status: string }>; releases: RmRelease[] };
-        const releases = rm?.releases ?? [];
-
-        const STATUS_COLOR: Record<string, string> = {
-          DRAFT: '#9e9e9e', PLANNED: '#2196f3', IN_PROGRESS: '#ff9800',
-          COMPLETED: '#4caf50', RELEASED: '#4caf50', CANCELLED: '#757575',
-          DELAYED: '#e91e63', AT_RISK: '#ff5722',
-        };
-
-        // Build a horizontal Gantt / timeline bar chart
-        const validReleases = releases.filter((r) => r.plannedStart && r.plannedEnd);
+        // Use the same roadmap gantt endpoint as RoadmapPage
+        const rows: any[] = ganttRows ?? [];
 
         let ganttContent: React.ReactNode;
-        if (validReleases.length === 0) {
-          ganttContent = (
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {releases.length === 0
-                ? <Typography variant="body2" color="text.secondary">No releases found.</Typography>
-                : releases.map((r) => (
-                  <Chip key={r.id} size="small"
-                    label={`${r.name}${r.version ? ` v${r.version}` : ''} · ${r.status}`}
-                    sx={{ bgcolor: STATUS_COLOR[r.status] ?? '#607d8b', color: '#fff' }}
-                  />
-                ))}
-            </Stack>
-          );
+        if (!rows.length) {
+          ganttContent = <EmptyState title="No roadmap data" description="Add releases in the Roadmap module to see timeline" />;
         } else {
-          const ganttOption = {
-            tooltip: {
-              formatter: (params: { data: { value: [number, string, string, string, string] } }) => {
-                const [, start, end, name, status] = params.data.value;
-                return `<b>${name}</b><br/>Status: ${status}<br/>${new Date(start).toLocaleDateString()} → ${new Date(end).toLocaleDateString()}`;
-              },
-            },
-            grid: { left: 140, right: 20, top: 10, bottom: 30 },
-            xAxis: { type: 'time', axisLabel: { fontSize: 10 } },
-            yAxis: {
-              type: 'category',
-              data: validReleases.map((r) => `${r.name}${r.version ? ` v${r.version}` : ''}`),
-              axisLabel: { fontSize: 11, width: 130, overflow: 'truncate' },
-            },
-            series: [{
-              type: 'custom',
-              renderItem: (_: unknown, api: { value: (i: number) => string | number; coord: (v: [number | string, number]) => [number, number]; size: (v: [number, number]) => [number, number]; style: (s: object) => object }) => {
-                const catIndex = api.value(0) as number;
-                const start = api.coord([api.value(1), catIndex]);
-                const end = api.coord([api.value(2), catIndex]);
-                const height = (api.size([0, 1]) as [number, number])[1] * 0.5;
-                const r = validReleases[catIndex];
-                return {
-                  type: 'rect',
-                  shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 6), height },
-                  style: api.style({ fill: STATUS_COLOR[r?.status] ?? '#607d8b' }),
-                };
-              },
-              encode: { x: [1, 2], y: 0 },
-              data: validReleases.map((r, i) => ({
-                value: [i, r.plannedStart!, r.plannedEnd!, r.name, r.status],
-                itemStyle: { color: STATUS_COLOR[r.status] ?? '#607d8b' },
-              })),
-            }],
-          };
-
-          const ganttHeight = Math.max(120, validReleases.length * 44 + 50);
+          const ganttOption = buildGanttOption(rows);
+          const flatCount = rows.reduce((n, r) => n + 1 + (r.children?.length ?? 0), 0);
+          const ganttHeight = Math.max(140, flatCount * 44 + 50);
           ganttContent = <ReactECharts option={ganttOption} style={{ height: ganttHeight }} />;
         }
 
