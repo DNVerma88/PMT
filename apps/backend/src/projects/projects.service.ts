@@ -5,13 +5,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,12 +156,19 @@ export class ProjectsService {
     });
     if (existing) throw new ConflictException('User is already a member of this project');
 
-    return this.prisma.projectMember.create({
+    const newMember = await this.prisma.projectMember.create({
       data: { projectId, userId: dto.userId, role: dto.role ?? 'MEMBER' },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
+
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+    if (project) {
+      this.notifications.onMemberAdded(dto.userId, project.name, projectId).catch(() => undefined);
+    }
+
+    return newMember;
   }
 
   async updateMemberRole(projectId: string, userId: string, role: string) {

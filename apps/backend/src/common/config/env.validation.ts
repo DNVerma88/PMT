@@ -21,4 +21,11 @@ export const validationSchema = Joi.object({
   RATE_LIMIT_AUTH_MAX: Joi.number().default(10),
 
   SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('true'),
+
+  SMTP_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  SMTP_HOST: Joi.string().default(''),
+  SMTP_PORT: Joi.number().default(587),
+  SMTP_USER: Joi.string().default(''),
+  SMTP_PASS: Joi.string().default(''),
+  SMTP_FROM: Joi.string().default('noreply@pmt.local'),
 });

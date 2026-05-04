@@ -31,6 +31,7 @@ import { logout } from '../../features/auth/authSlice';
 import { useAuth } from '../../features/auth/useAuth';
 import { setSidebarOpen } from '../../app/uiSlice';
 import { useProject } from '../../context/ProjectContext';
+import { NotificationBell } from '../notifications/NotificationBell';
 
 export const TOPBAR_HEIGHT = 64;
 
@@ -150,6 +151,9 @@ export function Topbar() {
             </IconButton>
           </Tooltip>
         </Box>
+
+        {/* Notification bell */}
+        <NotificationBell />
 
         {/* User menu */}
         <Tooltip title={userDisplayName || 'Account'}>

@@ -22,6 +22,7 @@ import {
   Dashboard,
   FolderOpen,
   Groups,
+  NotificationsNone,
   RocketLaunch,
   Timeline,
   ViewList,
@@ -49,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Productivity', path: '/productivity', icon: <Assessment /> },
   { label: 'Headcount', path: '/headcount', icon: <Groups /> },
   { label: 'Saved Views', path: '/saved-views', icon: <ViewList /> },
+  { label: 'Notifications', path: '/notifications', icon: <NotificationsNone /> },
   { label: 'Timeline', path: '/release-cadence', icon: <Timeline /> },
 ];
 

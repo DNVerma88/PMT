@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateSprintCalendarDto } from './dto/create-sprint-calendar.dto';
 import { CreateReleasePlanDto } from './dto/create-release-plan.dto';
 import { UpdateReleasePlanDto } from './dto/update-release-plan.dto';
@@ -15,7 +16,10 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ReleaseCadenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ── Sprint Calendars ───────────────────────────────────────────────────────
 
@@ -196,9 +200,9 @@ export class ReleaseCadenceService {
   }
 
   async updateReleasePlan(id: string, dto: UpdateReleasePlanDto, updatedById: string) {
-    await this.findReleasePlan(id);
+    const existing = await this.findReleasePlan(id);
     try {
-      return await this.prisma.releasePlan.update({
+      const updated = await this.prisma.releasePlan.update({
         where: { id },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -220,6 +224,21 @@ export class ReleaseCadenceService {
           team: { select: { id: true, name: true } },
         },
       });
+
+      // Fire notification if status changed to DELAYED or AT_RISK
+      if (dto.status && dto.status !== existing.status) {
+        this.notifications
+          .onReleaseStatusChanged(
+            updated.id,
+            updated.name,
+            updated.version,
+            updated.projectId,
+            dto.status,
+          )
+          .catch(() => undefined);
+      }
+
+      return updated;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Version already exists in this project');
@@ -261,9 +280,13 @@ export class ReleaseCadenceService {
   }
 
   async updateMilestone(id: string, dto: UpdateReleaseMilestoneDto, updatedById: string) {
-    const existing = await this.prisma.releaseMilestone.findUnique({ where: { id } });
+    const existing = await this.prisma.releaseMilestone.findUnique({
+      where: { id },
+      include: { releasePlan: { select: { id: true, name: true, version: true, projectId: true } } },
+    });
     if (!existing) throw new NotFoundException(`Milestone ${id} not found`);
-    return this.prisma.releaseMilestone.update({
+
+    const updated = await this.prisma.releaseMilestone.update({
       where: { id },
       data: {
         ...(dto.type !== undefined ? { type: dto.type } : {}),
@@ -274,6 +297,22 @@ export class ReleaseCadenceService {
         updatedBy: updatedById,
       },
     });
+
+    // Fire notification when status changes
+    if (dto.status && dto.status !== existing.status) {
+      this.notifications
+        .onMilestoneStatusChanged(
+          id,
+          existing.type,
+          existing.releasePlan.name,
+          existing.releasePlan.version,
+          existing.releasePlan.projectId,
+          dto.status,
+        )
+        .catch(() => undefined);
+    }
+
+    return updated;
   }
 
   async deleteMilestone(id: string) {

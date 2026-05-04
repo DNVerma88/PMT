@@ -13,6 +13,7 @@ const ReleaseCadencePage = lazy(() => import('../features/release-cadence/Releas
 const ProductivityPage = lazy(() => import('../features/productivity/ProductivityPage').then(m => ({ default: m.ProductivityPage })));
 const HeadcountPage = lazy(() => import('../features/headcount/HeadcountPage').then(m => ({ default: m.HeadcountPage })));
 const SavedViewsPage = lazy(() => import('../features/saved-views/SavedViewsPage').then(m => ({ default: m.SavedViewsPage })));
+const NotificationsPage = lazy(() => import('../features/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 const AdminPage = lazy(() => import('../features/admin/AdminPage').then(m => ({ default: m.AdminPage })));
 const ProjectsPage = lazy(() => import('../features/projects/ProjectsPage').then(m => ({ default: m.ProjectsPage })));
 
@@ -60,6 +61,10 @@ export const router = createBrowserRouter([
       {
         path: 'saved-views',
         element: <SuspenseWrapper><SavedViewsPage /></SuspenseWrapper>,
+      },
+      {
+        path: 'notifications',
+        element: <SuspenseWrapper><NotificationsPage /></SuspenseWrapper>,
       },
       {
         path: 'admin',

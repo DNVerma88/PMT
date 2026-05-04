@@ -110,6 +110,16 @@ export enum WorkType {
   DOCUMENTATION = 'DOCUMENTATION',
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export enum NotificationType {
+  MILESTONE_DUE_SOON = 'MILESTONE_DUE_SOON',
+  MILESTONE_OVERDUE = 'MILESTONE_OVERDUE',
+  RELEASE_STATUS_CHANGED = 'RELEASE_STATUS_CHANGED',
+  MILESTONE_STATUS_CHANGED = 'MILESTONE_STATUS_CHANGED',
+  MEMBER_ADDED = 'MEMBER_ADDED',
+}
+
 // ─── Permissions (resource:action format) ─────────────────────────────────────
 
 export enum PermissionResource {

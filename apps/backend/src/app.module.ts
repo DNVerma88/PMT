@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import configuration from './common/config/configuration';
 import { validationSchema } from './common/config/env.validation';
@@ -19,6 +20,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ProjectsModule } from './projects/projects.module';
 import { HealthModule } from './health/health.module';
 import { FeaturesModule } from './features/features.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -31,6 +33,9 @@ import { FeaturesModule } from './features/features.module';
       // Allow .env files only in non-production; production uses env from OS/secret store
       ignoreEnvFile: process.env.NODE_ENV === 'production',
     }),
+
+    // ── Scheduled tasks ──────────────────────────────────────────────────────
+    ScheduleModule.forRoot(),
 
     // ── Structured logging ────────────────────────────────────────────────────
     LoggerModule.forRootAsync({
@@ -94,6 +99,7 @@ import { FeaturesModule } from './features/features.module';
     ProjectsModule,
     HealthModule,
     FeaturesModule,
+    NotificationsModule,
   ],
 })
 export class AppModule implements NestModule {
