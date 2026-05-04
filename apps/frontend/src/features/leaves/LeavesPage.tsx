@@ -19,7 +19,9 @@ function useTeamMembers() {
     queryKey: ['team-members'],
     queryFn: () =>
       import('../../services/api').then(({ api }) =>
-        api.get('/users', { params: { limit: 200 } }).then((r: { data: { items: { id: string; firstName: string; lastName: string; email: string }[] } }) => r.data.items ?? []),
+        api
+          .get<{ data: { id: string; firstName: string; lastName: string; email: string }[]; meta: unknown }>('/users', { params: { limit: 200 } })
+          .then((r) => r.data.data ?? []),
       ),
   });
 }
