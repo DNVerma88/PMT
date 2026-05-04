@@ -42,7 +42,7 @@ const leavesService = {
     api.post<LeaveRecord>('/leaves', payload).then((r) => r.data),
 
   getAll: (query?: LeaveQuery) =>
-    api.get<{ data: LeaveRecord[]; meta: { total: number; page: number; limit: number; totalPages: number } }>('/leaves', { params: query }).then((r) => r.data),
+    api.get<LeaveRecord[]>('/leaves', { params: query }).then((r) => r.data),
 
   getOne: (id: string) =>
     api.get<LeaveRecord>(`/leaves/${id}`).then((r) => r.data),

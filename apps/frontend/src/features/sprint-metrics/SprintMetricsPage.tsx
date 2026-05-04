@@ -214,7 +214,7 @@ export function SprintMetricsPage() {
       <Card variant="outlined">
         <CardHeader title={<Typography variant="subtitle1" fontWeight={600}><DonutSmall sx={{ verticalAlign: 'middle', mr: 1 }} />Snapshot History</Typography>} />
         <CardContent sx={{ pt: 0 }}>
-          {isLoading ? <LoadingSpinner /> : !list?.data?.length ? (
+          {isLoading ? <LoadingSpinner /> : !list?.items?.length ? (
             <EmptyState icon={<DonutSmall />} title="No snapshots yet" description="Log your first sprint snapshot." />
           ) : (
             <TableContainer component={Paper} variant="outlined">
@@ -229,7 +229,7 @@ export function SprintMetricsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {list.data.map((s) => (
+                  {list.items.map((s) => (
                     <TableRow key={s.id} hover>
                       <TableCell>{s.sprintName ?? '—'}</TableCell>
                       <TableCell>{new Date(s.snapshotDate).toLocaleDateString()}</TableCell>
