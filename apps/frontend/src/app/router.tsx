@@ -16,6 +16,7 @@ const SavedViewsPage = lazy(() => import('../features/saved-views/SavedViewsPage
 const NotificationsPage = lazy(() => import('../features/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 const ExportsPage = lazy(() => import('../features/exports/ExportsPage').then(m => ({ default: m.ExportsPage })));
 const PortfolioPage = lazy(() => import('../features/portfolio/PortfolioPage').then(m => ({ default: m.PortfolioPage })));
+const IntegrationsPage = lazy(() => import('../features/integrations/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
 const AdminPage = lazy(() => import('../features/admin/AdminPage').then(m => ({ default: m.AdminPage })));
 const ProjectsPage = lazy(() => import('../features/projects/ProjectsPage').then(m => ({ default: m.ProjectsPage })));
 
@@ -75,6 +76,10 @@ export const router = createBrowserRouter([
       {
         path: 'portfolio',
         element: <SuspenseWrapper><PortfolioPage /></SuspenseWrapper>,
+      },
+      {
+        path: 'integrations',
+        element: <SuspenseWrapper><IntegrationsPage /></SuspenseWrapper>,
       },
       {
         path: 'admin',

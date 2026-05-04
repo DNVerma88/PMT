@@ -28,4 +28,8 @@ export const validationSchema = Joi.object({
   SMTP_USER: Joi.string().default(''),
   SMTP_PASS: Joi.string().default(''),
   SMTP_FROM: Joi.string().default('noreply@pmt.local'),
+
+  // Integration encryption key — 64-char hex (= 32-byte AES-256 key)
+  INTEGRATION_ENCRYPTION_KEY: Joi.string().default(''),
+  EXPORT_STORAGE_PATH: Joi.string().default(''),
 });

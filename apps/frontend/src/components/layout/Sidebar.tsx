@@ -24,6 +24,7 @@ import {
   Download,
   FolderOpen,
   Groups,
+  Hub,
   NotificationsNone,
   RocketLaunch,
   ViewList,
@@ -54,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Saved Views', path: '/saved-views', icon: <ViewList /> },
   { label: 'Notifications', path: '/notifications', icon: <NotificationsNone /> },
   { label: 'Exports', path: '/exports', icon: <Download /> },
+  { label: 'Integrations', path: '/integrations', icon: <Hub /> },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
