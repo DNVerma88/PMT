@@ -21,6 +21,9 @@ const RESOURCES = [
     'exports',
     'portfolio',
     'integrations',
+    'sprint_metrics',
+    'leaves',
+    'wsr',
 ];
 const ACTIONS = ['create', 'read', 'update', 'delete', 'manage', 'export', 'share'];
 const ROLE_PERMISSIONS = {
@@ -41,6 +44,9 @@ const ROLE_PERMISSIONS = {
         { resource: 'exports', actions: ['export'] },
         { resource: 'portfolio', actions: ['read'] },
         { resource: 'integrations', actions: ['read'] },
+        { resource: 'sprint_metrics', actions: ['read', 'create', 'update', 'delete'] },
+        { resource: 'leaves', actions: ['read', 'manage'] },
+        { resource: 'wsr', actions: ['read', 'manage'] },
     ],
     PROJECT_MANAGER: [
         { resource: 'projects', actions: ['read'] },
@@ -54,6 +60,9 @@ const ROLE_PERMISSIONS = {
         { resource: 'exports', actions: ['export'] },
         { resource: 'portfolio', actions: ['read'] },
         { resource: 'integrations', actions: ['read'] },
+        { resource: 'sprint_metrics', actions: ['read', 'create', 'update'] },
+        { resource: 'leaves', actions: ['read', 'manage'] },
+        { resource: 'wsr', actions: ['read', 'manage'] },
     ],
     ENGINEERING_MANAGER: [
         { resource: 'projects', actions: ['read'] },
@@ -67,6 +76,9 @@ const ROLE_PERMISSIONS = {
         { resource: 'exports', actions: ['export'] },
         { resource: 'portfolio', actions: ['read'] },
         { resource: 'integrations', actions: ['read'] },
+        { resource: 'sprint_metrics', actions: ['read', 'create', 'update'] },
+        { resource: 'leaves', actions: ['read', 'manage'] },
+        { resource: 'wsr', actions: ['read'] },
     ],
     TEAM_LEAD: [
         { resource: 'projects', actions: ['read'] },
@@ -79,6 +91,9 @@ const ROLE_PERMISSIONS = {
         { resource: 'saved_views', actions: ['create', 'read', 'update'] },
         { resource: 'exports', actions: ['export'] },
         { resource: 'portfolio', actions: ['read'] },
+        { resource: 'sprint_metrics', actions: ['read', 'create'] },
+        { resource: 'leaves', actions: ['read'] },
+        { resource: 'wsr', actions: ['read'] },
     ],
     VIEWER: [
         { resource: 'projects', actions: ['read'] },
@@ -91,6 +106,9 @@ const ROLE_PERMISSIONS = {
         { resource: 'saved_views', actions: ['read'] },
         { resource: 'exports', actions: ['export'] },
         { resource: 'portfolio', actions: ['read'] },
+        { resource: 'sprint_metrics', actions: ['read'] },
+        { resource: 'leaves', actions: ['read'] },
+        { resource: 'wsr', actions: ['read'] },
     ],
 };
 async function main() {

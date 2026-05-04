@@ -116,6 +116,9 @@ export class ExportsService {
         case ExportReportType.RELEASE:
           data = await this.fetchReleaseData(dto);
           break;
+        case ExportReportType.WSR:
+          data = await this.fetchWsrData(dto);
+          break;
         default:
           throw new Error(`Unknown report type: ${dto.reportType}`);
       }
@@ -208,6 +211,61 @@ export class ExportsService {
       orderBy: [{ period: 'asc' }],
     });
     return { records };
+  }
+
+  private async fetchWsrData(dto: CreateExportDto) {
+    const weekOf = dto.weekOf ? new Date(dto.weekOf) : new Date();
+    const day = weekOf.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    weekOf.setUTCDate(weekOf.getUTCDate() + diff);
+    weekOf.setUTCHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekOf);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+    weekEnd.setUTCHours(23, 59, 59, 999);
+
+    const projectId = dto.projectId;
+    const teamId = dto.teamId;
+
+    const [notes, headcount, sprintSnapshot, features, releases, leaves] = await Promise.all([
+      projectId ? this.prisma.weeklyReport.findFirst({
+        where: { projectId, weekOf, deletedAt: null },
+      }) : null,
+      this.prisma.headcountRecord.findMany({
+        where: {
+          ...(projectId ? { projectId } : {}),
+          ...(teamId ? { teamId } : {}),
+          period: { gte: new Date(weekOf.getUTCFullYear(), weekOf.getUTCMonth() - 5, 1), lte: weekEnd },
+        },
+        include: { team: { select: { name: true } } },
+        orderBy: { period: 'asc' },
+      }),
+      projectId ? this.prisma.sprintStateSnapshot.findFirst({
+        where: { deletedAt: null, projectId, ...(teamId ? { teamId } : {}) },
+        orderBy: { snapshotDate: 'desc' },
+      }) : null,
+      this.prisma.feature.findMany({
+        where: { deletedAt: null, ...(projectId ? { projectId } : {}), status: { notIn: ['CANCELLED'] } },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      this.prisma.releasePlan.findMany({
+        where: { deletedAt: null, ...(projectId ? { projectId } : {}), status: { notIn: ['CANCELLED'] } },
+        include: { milestones: { orderBy: { plannedDate: 'asc' } } },
+        orderBy: { plannedStart: 'asc' },
+      }),
+      this.prisma.leaveRecord.findMany({
+        where: {
+          deletedAt: null,
+          ...(projectId ? { projectId } : {}),
+          ...(teamId ? { teamId } : {}),
+          startDate: { lte: weekEnd },
+          endDate: { gte: weekOf },
+        },
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { startDate: 'asc' },
+      }),
+    ]);
+
+    return { weekOf, weekEnd, notes, headcount, sprintSnapshot, features, releases, leaves };
   }
 
   private async fetchReleaseData(dto: CreateExportDto) {
@@ -365,6 +423,97 @@ export class ExportsService {
           unit: r.metricDef?.unit ?? '',
         });
       }
+    } else if (reportType === ExportReportType.WSR) {
+      // Sheet 1: Headcount (Staffing)
+      const wsHC = wb.addWorksheet('Staffing');
+      wsHC.columns = [
+        { header: 'Period', key: 'period', width: 14 },
+        { header: 'Team', key: 'team', width: 20 },
+        { header: 'Role', key: 'role', width: 20 },
+        { header: 'Opening', key: 'opening', width: 10 },
+        { header: 'Added', key: 'added', width: 10 },
+        { header: 'Removed', key: 'removed', width: 10 },
+        { header: 'Closing', key: 'closing', width: 10 },
+        { header: 'Planned', key: 'planned', width: 10 },
+      ];
+      wsHC.getRow(1).eachCell((cell) => Object.assign(cell, headerStyle));
+      for (const r of data.headcount ?? []) {
+        wsHC.addRow({
+          period: r.period ? new Date(r.period).toLocaleDateString('en', { year: 'numeric', month: 'short' }) : '',
+          team: r.team?.name ?? '',
+          role: r.role ?? '',
+          opening: r.openingCount, added: r.addedCount, removed: r.removedCount,
+          closing: r.closingCount, planned: r.plannedCount ?? '',
+        });
+      }
+
+      // Sheet 2: Sprint Productivity
+      const wsSP = wb.addWorksheet('Sprint Productivity');
+      if (data.sprintSnapshot) {
+        const snap = data.sprintSnapshot;
+        wsSP.addRow(['Sprint', snap.sprintName ?? 'Latest']);
+        wsSP.addRow(['Date', snap.snapshotDate ? new Date(snap.snapshotDate).toLocaleDateString() : '']);
+        wsSP.addRow([]);
+        wsSP.addRow(['Story State', 'Count']);
+        for (const [key, val] of Object.entries(snap.storyStateCounts as Record<string, number>)) {
+          wsSP.addRow([key, val]);
+        }
+        wsSP.addRow([]);
+        wsSP.addRow(['Bug State', 'Count']);
+        for (const [key, val] of Object.entries(snap.bugStateCounts as Record<string, number>)) {
+          wsSP.addRow([key, val]);
+        }
+      }
+
+      // Sheet 3: Roadmap
+      const wsRM = wb.addWorksheet('Roadmap');
+      wsRM.columns = [
+        { header: 'Release', key: 'release', width: 30 },
+        { header: 'Version', key: 'version', width: 12 },
+        { header: 'Status', key: 'status', width: 14 },
+        { header: 'Planned Start', key: 'start', width: 16 },
+        { header: 'Planned End', key: 'end', width: 16 },
+      ];
+      wsRM.getRow(1).eachCell((cell) => Object.assign(cell, headerStyle));
+      for (const r of data.releases ?? []) {
+        wsRM.addRow({ release: r.name, version: r.version, status: r.status,
+          start: r.plannedStart ? new Date(r.plannedStart).toLocaleDateString() : '',
+          end: r.plannedEnd ? new Date(r.plannedEnd).toLocaleDateString() : '' });
+      }
+
+      // Sheet 4: Leaves
+      const wsLeaves = wb.addWorksheet('Leaves');
+      wsLeaves.columns = [
+        { header: 'Name', key: 'name', width: 25 },
+        { header: 'Type', key: 'type', width: 20 },
+        { header: 'From', key: 'from', width: 14 },
+        { header: 'To', key: 'to', width: 14 },
+        { header: 'Half Day', key: 'half', width: 10 },
+        { header: 'Notes', key: 'notes', width: 30 },
+      ];
+      wsLeaves.getRow(1).eachCell((cell) => Object.assign(cell, headerStyle));
+      for (const l of data.leaves ?? []) {
+        wsLeaves.addRow({
+          name: `${l.user?.firstName ?? ''} ${l.user?.lastName ?? ''}`.trim(),
+          type: l.leaveType,
+          from: l.startDate ? new Date(l.startDate).toLocaleDateString() : '',
+          to: l.endDate ? new Date(l.endDate).toLocaleDateString() : '',
+          half: l.halfDay ? 'Yes' : 'No',
+          notes: l.notes ?? '',
+        });
+      }
+
+      // Sheet 5: Notes / Narrative
+      const wsNotes = wb.addWorksheet('WSR Notes');
+      const notes = data.notes;
+      wsNotes.addRow(['Section', 'Content']);
+      wsNotes.getRow(1).eachCell((cell) => Object.assign(cell, headerStyle));
+      wsNotes.addRow(['Done & Planned Work', notes?.noteDonePlanned ?? '']);
+      wsNotes.addRow(['Achieved So Far', notes?.noteAchieved ?? '']);
+      wsNotes.addRow(['Appreciation / Escalation', notes?.noteAppreciation ?? '']);
+      wsNotes.addRow(['Risk / Concern', notes?.noteRiskConcern ?? '']);
+      wsNotes.getColumn(1).width = 28;
+      wsNotes.getColumn(2).width = 80;
     }
 
     await wb.xlsx.writeFile(filePath);
@@ -404,6 +553,21 @@ export class ExportsService {
           String(r.actual),
           r.metricDef?.unit ?? '',
         ]);
+      }
+    } else if (reportType === ExportReportType.WSR) {
+      // WSR CSV: flatten all sections
+      rows.push(['Section', 'Field', 'Value']);
+      // Leaves
+      for (const l of data.leaves ?? []) {
+        rows.push(['Leaves', `${l.user?.firstName ?? ''} ${l.user?.lastName ?? ''}`.trim(),
+          `${l.leaveType} | ${l.startDate ? new Date(l.startDate).toLocaleDateString() : ''} – ${l.endDate ? new Date(l.endDate).toLocaleDateString() : ''}`]);
+      }
+      // Notes
+      if (data.notes) {
+        rows.push(['Done & Planned', '', data.notes.noteDonePlanned ?? '']);
+        rows.push(['Achieved So Far', '', data.notes.noteAchieved ?? '']);
+        rows.push(['Appreciation / Escalation', '', data.notes.noteAppreciation ?? '']);
+        rows.push(['Risk / Concern', '', data.notes.noteRiskConcern ?? '']);
       }
     } else {
       rows.push(['Name', 'Version', 'Type', 'Status', 'Project', 'Planned Start', 'Planned End', 'Actual Start', 'Actual End']);
@@ -483,6 +647,50 @@ export class ExportsService {
           doc.fontSize(9).fillColor('#000').text(
             `${r.period ? new Date(r.period).toLocaleDateString() : ''}  ${r.metricDef?.name ?? ''}  [${r.project?.name ?? ''}${r.team ? ` / ${r.team.name}` : ''}]  Planned: ${r.planned ?? '—'}  Actual: ${r.actual}  ${r.metricDef?.unit ?? ''}`,
           );
+        }
+      } else if (reportType === ExportReportType.WSR) {
+        const dateLabel = data.weekOf ? `Week of ${new Date(data.weekOf).toLocaleDateString()}` : '';
+        doc.fontSize(12).fillColor(BRAND).text(dateLabel, { align: 'right' });
+        doc.moveDown(1);
+
+        // Leaves
+        if (data.leaves?.length) {
+          doc.fontSize(13).fillColor(BRAND).text('Leaves', { underline: true });
+          doc.moveDown(0.3);
+          for (const l of data.leaves) {
+            doc.fontSize(10).fillColor('#000').text(
+              `• ${l.user?.firstName ?? ''} ${l.user?.lastName ?? ''} — ${l.leaveType}  (${l.startDate ? new Date(l.startDate).toLocaleDateString() : ''} to ${l.endDate ? new Date(l.endDate).toLocaleDateString() : ''})${l.halfDay ? ' [Half day]' : ''}`,
+            );
+          }
+          doc.moveDown(1);
+        }
+
+        // Notes sections
+        const sections = [
+          { key: 'noteDonePlanned', label: 'Done and Planned Work' },
+          { key: 'noteAchieved', label: 'Achieved So Far' },
+          { key: 'noteAppreciation', label: 'Appreciation / Escalation' },
+          { key: 'noteRiskConcern', label: 'Risk / Concern' },
+        ];
+        for (const s of sections) {
+          const text = data.notes?.[s.key];
+          if (text) {
+            doc.fontSize(13).fillColor(BRAND).text(s.label, { underline: true });
+            doc.moveDown(0.3);
+            doc.fontSize(10).fillColor('#000').text(text);
+            doc.moveDown(1);
+          }
+        }
+
+        // Roadmap summary
+        if (data.releases?.length) {
+          doc.fontSize(13).fillColor(BRAND).text('Roadmap', { underline: true });
+          doc.moveDown(0.3);
+          for (const r of data.releases) {
+            doc.fontSize(10).fillColor('#000').text(
+              `• ${r.name} v${r.version}  [${r.status}]  ${r.plannedStart ? new Date(r.plannedStart).toLocaleDateString() : ''} → ${r.plannedEnd ? new Date(r.plannedEnd).toLocaleDateString() : ''}`,
+            );
+          }
         }
       }
 

@@ -19,6 +19,9 @@ const PortfolioPage = lazy(() => import('../features/portfolio/PortfolioPage').t
 const IntegrationsPage = lazy(() => import('../features/integrations/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
 const AdminPage = lazy(() => import('../features/admin/AdminPage').then(m => ({ default: m.AdminPage })));
 const ProjectsPage = lazy(() => import('../features/projects/ProjectsPage').then(m => ({ default: m.ProjectsPage })));
+const SprintMetricsPage = lazy(() => import('../features/sprint-metrics/SprintMetricsPage').then(m => ({ default: m.SprintMetricsPage })));
+const LeavesPage = lazy(() => import('../features/leaves/LeavesPage').then(m => ({ default: m.LeavesPage })));
+const WsrPage = lazy(() => import('../features/wsr/WsrPage').then(m => ({ default: m.WsrPage })));
 
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<LoadingSpinner fullPage />}>{children}</Suspense>
@@ -96,6 +99,18 @@ export const router = createBrowserRouter([
             <SuspenseWrapper><ProjectsPage /></SuspenseWrapper>
           </RoleGuard>
         ),
+      },
+      {
+        path: 'sprint-metrics',
+        element: <SuspenseWrapper><SprintMetricsPage /></SuspenseWrapper>,
+      },
+      {
+        path: 'leaves',
+        element: <SuspenseWrapper><LeavesPage /></SuspenseWrapper>,
+      },
+      {
+        path: 'wsr',
+        element: <SuspenseWrapper><WsrPage /></SuspenseWrapper>,
       },
     ],
   },

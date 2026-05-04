@@ -135,6 +135,7 @@ model User {
   createdReleasePlans    ReleasePlan[]          @relation("ReleasePlanCreator")
   notifications          Notification[]
   notificationPreference NotificationPreference?
+  leaveRecords           LeaveRecord[]
 
   @@index([email])
   @@index([status])
@@ -220,6 +221,10 @@ model Project {
   members             ProjectMember[]
   features            Feature[]
   integrations        IntegrationConnection[]
+  sprintSnapshots     SprintStateSnapshot[]
+  leaveRecords        LeaveRecord[]
+  wsrConfig           WsrConfig?
+  weeklyReports       WeeklyReport[]
 
   @@index([isActive])
   @@map("projects")
@@ -257,6 +262,9 @@ model Team {
   productivityRecords ProductivityRecord[]
   releasePlans        ReleasePlan[]
   features            Feature[]
+  sprintSnapshots     SprintStateSnapshot[]
+  leaveRecords        LeaveRecord[]
+  weeklyReports       WeeklyReport[]
 
   @@unique([name, projectId])
   @@index([projectId])
@@ -313,6 +321,7 @@ model Sprint {
 
   sprintCalendar      SprintCalendar       @relation(fields: [sprintCalendarId], references: [id])
   productivityRecords ProductivityRecord[]
+  stateSnapshots      SprintStateSnapshot[]
 
   @@unique([sprintCalendarId, number])
   @@index([startDate, endDate])
@@ -702,6 +711,147 @@ model IntegrationFieldMap {
 
   @@unique([connectionId, pmtField])
   @@map("integration_field_maps")
+}
+
+// ─── Sprint State Snapshots ───────────────────────────────────────────────────
+
+/// Point-in-time snapshot of ticket/bug state counts within a sprint.
+/// State keys and labels are defined in WsrConfig.storyStateConfig / bugStateConfig.
+model SprintStateSnapshot {
+  id             String    @id @default(uuid())
+  projectId      String?   @map("project_id")
+  teamId         String?   @map("team_id")
+  sprintId       String?   @map("sprint_id")
+  snapshotDate   DateTime  @map("snapshot_date")
+  sprintName     String?   @map("sprint_name")   // free-text e.g. "Sprint 81"
+  /// JSON map: { "<stateKey>": count }  e.g. { "active":17, "in_review":3, "closed":3 }
+  storyStateCounts  Json   @map("story_state_counts")  @default("{}")
+  /// JSON map: { "<stateKey>": count }  e.g. { "active":4, "backlog":5, "closed":41 }
+  bugStateCounts    Json   @map("bug_state_counts")    @default("{}")
+  bugCountAtSprintStart Int? @map("bug_count_at_sprint_start")
+  notes          String?
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  project  Project? @relation(fields: [projectId], references: [id])
+  team     Team?    @relation(fields: [teamId], references: [id])
+  sprint   Sprint?  @relation(fields: [sprintId], references: [id])
+
+  @@index([projectId, snapshotDate])
+  @@index([teamId, snapshotDate])
+  @@map("sprint_state_snapshots")
+}
+
+// ─── Leave Records ────────────────────────────────────────────────────────────
+
+/// Team member absence / leave record. Leave type keys resolve to labels in WsrConfig.leaveTypeConfig.
+model LeaveRecord {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  projectId   String?   @map("project_id")
+  teamId      String?   @map("team_id")
+  leaveType   String    @default("PLANNED") @map("leave_type") // key from WsrConfig.leaveTypeConfig
+  startDate   DateTime  @map("start_date")
+  endDate     DateTime  @map("end_date")
+  halfDay     Boolean   @default(false) @map("half_day")
+  notes       String?
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  user    User     @relation(fields: [userId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  team    Team?    @relation(fields: [teamId], references: [id])
+
+  @@index([userId, startDate])
+  @@index([projectId, startDate])
+  @@index([teamId, startDate])
+  @@map("leave_records")
+}
+
+// ─── WSR Config ───────────────────────────────────────────────────────────────
+
+/// Per-project configuration for the Weekly Status Report page.
+model WsrConfig {
+  id          String  @id @default(uuid())
+  projectId   String  @unique @map("project_id")
+
+  reportTitle String  @default("Weekly Status Report") @map("report_title")
+  clientName  String? @map("client_name")
+  vendorName  String? @map("vendor_name")
+
+  // Section titles
+  titleStaffing      String @default("Staffing")                 @map("title_staffing")
+  titleProductivity  String @default("Sprint Productivity")      @map("title_productivity")
+  titleRoadmap       String @default("Roadmap")                  @map("title_roadmap")
+  titleDonePlanned   String @default("Done and Planned Work")    @map("title_done_planned")
+  titleAchieved      String @default("Achieved So Far")          @map("title_achieved")
+  titleLeaves        String @default("Leaves")                   @map("title_leaves")
+  titleAppreciation  String @default("Appreciation / Escalation") @map("title_appreciation")
+  titleRisk          String @default("Risk / Concern")           @map("title_risk")
+
+  // Section visibility
+  showStaffing      Boolean @default(true) @map("show_staffing")
+  showProductivity  Boolean @default(true) @map("show_productivity")
+  showRoadmap       Boolean @default(true) @map("show_roadmap")
+  showDonePlanned   Boolean @default(true) @map("show_done_planned")
+  showAchieved      Boolean @default(true) @map("show_achieved")
+  showLeaves        Boolean @default(true) @map("show_leaves")
+  showAppreciation  Boolean @default(true) @map("show_appreciation")
+  showRisk          Boolean @default(true) @map("show_risk")
+
+  /// Ordered array of section keys, e.g. ["staffing","productivity","roadmap","done_planned","achieved","leaves","appreciation","risk"]
+  sectionOrder  Json @default("[\"staffing\",\"productivity\",\"roadmap\",\"done_planned\",\"achieved\",\"leaves\",\"appreciation\",\"risk\"]") @map("section_order")
+
+  /// Array of { key, label, color } — defines story/US state labels used in sprint snapshots
+  storyStateConfig Json @default("[{\"key\":\"active\",\"label\":\"Active\",\"color\":\"#ff9800\"},{\"key\":\"in_review\",\"label\":\"BA Review\",\"color\":\"#2196f3\"},{\"key\":\"blocked\",\"label\":\"Issues\",\"color\":\"#f44336\"},{\"key\":\"closed\",\"label\":\"Closed\",\"color\":\"#4caf50\"}]") @map("story_state_config")
+
+  /// Array of { key, label, color } — defines bug/defect state labels
+  bugStateConfig Json @default("[{\"key\":\"closed\",\"label\":\"Closed\",\"color\":\"#4caf50\"},{\"key\":\"active\",\"label\":\"Active\",\"color\":\"#f44336\"},{\"key\":\"backlog\",\"label\":\"Backlog\",\"color\":\"#9e9e9e\"},{\"key\":\"blocked\",\"label\":\"Issues\",\"color\":\"#ff5722\"},{\"key\":\"ready_to_test\",\"label\":\"Ready To Test\",\"color\":\"#2196f3\"}]") @map("bug_state_config")
+
+  /// Array of { key, label } — defines leave types
+  leaveTypeConfig Json @default("[{\"key\":\"PLANNED\",\"label\":\"Planned Leave\"},{\"key\":\"SICK\",\"label\":\"Sick Leave\"},{\"key\":\"EMERGENCY\",\"label\":\"Emergency Leave\"},{\"key\":\"PUBLIC_HOLIDAY\",\"label\":\"Public Holiday\"}]") @map("leave_type_config")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("wsr_configs")
+}
+
+// ─── Weekly Report Notes ──────────────────────────────────────────────────────
+
+/// Lightweight per-week narrative annotations attached to a project.
+/// The WSR page auto-saves these inline text fields.
+model WeeklyReport {
+  id                 String    @id @default(uuid())
+  projectId          String    @map("project_id")
+  teamId             String?   @map("team_id")
+  weekOf             DateTime  @map("week_of")   // Monday of the report week (date-only)
+  sprintRef          String?   @map("sprint_ref") // e.g. "Sprint 81"
+  noteDonePlanned    String?   @map("note_done_planned")
+  noteAchieved       String?   @map("note_achieved")
+  noteAppreciation   String?   @map("note_appreciation")
+  noteRiskConcern    String?   @map("note_risk_concern")
+  deletedAt          DateTime? @map("deleted_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdBy          String?   @map("created_by")
+  updatedBy          String?   @map("updated_by")
+
+  project Project  @relation(fields: [projectId], references: [id])
+  team    Team?    @relation(fields: [teamId], references: [id])
+
+  @@unique([projectId, weekOf])
+  @@index([projectId, weekOf])
+  @@map("weekly_reports")
 }
 
 /// Append-only log of each sync run

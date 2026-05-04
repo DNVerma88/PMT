@@ -24,6 +24,9 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ExportsModule } from './exports/exports.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { SprintMetricsModule } from './sprint-metrics/sprint-metrics.module';
+import { LeavesModule } from './leaves/leaves.module';
+import { WsrModule } from './wsr/wsr.module';
 
 @Module({
   imports: [
@@ -106,6 +109,9 @@ import { IntegrationsModule } from './integrations/integrations.module';
     ExportsModule,
     PortfolioModule,
     IntegrationsModule,
+    SprintMetricsModule,
+    LeavesModule,
+    WsrModule,
   ],
 })
 export class AppModule implements NestModule {

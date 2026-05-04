@@ -6,6 +6,7 @@ export enum ExportReportType {
   HEADCOUNT = 'headcount',
   PRODUCTIVITY = 'productivity',
   RELEASE = 'release',
+  WSR = 'wsr',
 }
 
 export enum ExportFormatDto {
@@ -42,4 +43,14 @@ export class CreateExportDto {
   @IsOptional()
   @IsString()
   to?: string;
+
+  @ApiPropertyOptional({ description: 'Week date for WSR report (any date in the week, ISO)' })
+  @IsOptional()
+  @IsString()
+  weekOf?: string;
+
+  @ApiPropertyOptional({ description: 'Team ID scope for WSR report' })
+  @IsOptional()
+  @IsString()
+  teamId?: string;
 }
