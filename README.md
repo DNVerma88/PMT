@@ -1,6 +1,6 @@
 # PMT – Project Management Tool
 
-A full-stack, monorepo project management platform for tracking roadmaps, release cadences, productivity, and headcount reporting.
+A full-stack, monorepo project management platform for tracking roadmaps, release cadences, productivity, headcount, sprint metrics, leaves, and automated Weekly Status Reports.
 
 ---
 
@@ -11,6 +11,7 @@ A full-stack, monorepo project management platform for tracking roadmaps, releas
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Modules & Features](#modules--features)
+- [Database Schema](#database-schema)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
   - [1. Fork & Clone](#1-fork--clone)
@@ -31,10 +32,13 @@ A full-stack, monorepo project management platform for tracking roadmaps, releas
 
 PMT is a monorepo application that provides:
 
-- **Roadmap management** – Feature tracking with timeline visualization
+- **Roadmap management** – Feature tracking with Gantt timeline visualization
 - **Release cadence** – Sprint planning, milestones, and release lifecycle management
-- **Productivity reporting** – Team and individual productivity metrics
-- **Headcount reporting** – Workforce planning and headcount tracking
+- **Productivity reporting** – Team productivity metrics and records
+- **Headcount reporting** – Workforce planning with projection charts and configurable windows
+- **Sprint Metrics** – Per-sprint story/bug state snapshot tracking with donut charts
+- **Leaves** – Leave record logging and weekly overlap reporting
+- **Weekly Status Report (WSR)** – Auto-assembled, configurable weekly status page pulling live data from all modules
 - **Dashboard** – Aggregated KPIs and charts across all modules
 - **Saved views** – Custom chart and filter configurations per user/role
 - **Role-based access control** – Granular permissions per module
@@ -67,7 +71,7 @@ PMT is a monorepo application that provides:
 | Technology | Version | Purpose |
 |---|---|---|
 | NestJS | ^10.3 | API framework |
-| Prisma | ^5.11 | ORM & migrations |
+| Prisma | ^5.22 | ORM & migrations |
 | PostgreSQL | 16 | Primary database |
 | Passport + JWT | — | Authentication |
 | Swagger | ^7.3 | API docs |
@@ -82,7 +86,7 @@ PMT is a monorepo application that provides:
 | React | ^19.0 | UI framework |
 | Vite | ^5.2 | Build tool |
 | MUI (Material UI) | ^6.0 | Component library |
-| ECharts | ^5.5 | Charts & visualization |
+| ECharts (`echarts-for-react`) | ^5.5 | Charts & visualization |
 | Redux Toolkit | ^2.2 | State management |
 | TanStack Query | ^5.28 | Server state & caching |
 | React Router | ^7.0 | Client-side routing |
@@ -110,14 +114,18 @@ PMT/
 │   │   │   ├── auth/             # JWT authentication & refresh tokens
 │   │   │   ├── users/            # User management
 │   │   │   ├── roles/            # Role & permission management
-│   │   │   ├── projects/         # Project CRUD
+│   │   │   ├── projects/         # Project CRUD & headcount window settings
 │   │   │   ├── features/         # Feature/roadmap items
-│   │   │   ├── roadmap/          # Roadmap aggregation
+│   │   │   ├── roadmap/          # Roadmap aggregation & Gantt endpoint
 │   │   │   ├── release-cadence/  # Sprints, milestones, release plans
 │   │   │   ├── productivity/     # Productivity records & reports
-│   │   │   ├── headcount/        # Headcount records & settings
+│   │   │   ├── headcount/        # Headcount records, analytics & settings
+│   │   │   ├── sprint-metrics/   # Sprint state snapshots (stories + bugs)
+│   │   │   ├── leaves/           # Leave records & weekly overlap queries
+│   │   │   ├── wsr/              # Weekly Status Report config, notes & assembly
 │   │   │   ├── dashboard/        # Aggregated dashboard data
 │   │   │   ├── saved-views/      # User-defined chart/filter views
+│   │   │   ├── exports/          # Excel, CSV, PDF export generation
 │   │   │   ├── health/           # Health check endpoint
 │   │   │   ├── common/           # Guards, decorators, filters, middleware
 │   │   │   └── prisma/           # PrismaService
@@ -126,10 +134,20 @@ PMT/
 │       ├── src/
 │       │   ├── app/              # Redux store, router, theme
 │       │   ├── components/       # Shared UI components & layout
-│       │   ├── features/         # Feature-sliced pages (auth, dashboard, roadmap, etc.)
+│       │   ├── features/
+│       │   │   ├── auth/         # Login page
+│       │   │   ├── dashboard/    # KPI dashboard
+│       │   │   ├── roadmap/      # Gantt timeline + feature timeline
+│       │   │   ├── release-cadence/ # Sprints & release management
+│       │   │   ├── productivity/ # Productivity records
+│       │   │   ├── headcount/    # HC projection chart + waterfall
+│       │   │   ├── sprint-metrics/  # Sprint snapshot donut charts
+│       │   │   ├── leaves/       # Leave table + log dialog
+│       │   │   ├── wsr/          # Weekly Status Report assembly page
+│       │   │   └── exports/      # Export dialog (Excel/CSV/PDF)
 │       │   ├── services/         # Axios API service layer
 │       │   ├── hooks/            # Custom React hooks
-│       │   ├── context/          # React context providers
+│       │   ├── context/          # React context providers (Project, Auth)
 │       │   └── types/            # Frontend-specific types
 │       └── Dockerfile
 ├── packages/
@@ -156,19 +174,19 @@ PMT/
 - Project membership model
 
 ### Projects
-- Create and manage projects
+- Create and manage projects with project-scoped data isolation
 - Add/remove project members with roles
-- Project-scoped data isolation
+- Persisted headcount chart window settings (`headcountPastMonths`, `headcountFutureMonths`)
 
 ### Roadmap & Features
 - Feature lifecycle tracking with drag-and-drop ordering
-- Timeline visualization (Gantt-style via ECharts)
+- Gantt timeline visualization via ECharts custom renderer
+- Milestone diamonds overlaid on release bars (production live, code freeze, go/no-go, etc.)
 - Feature drawer for detailed editing
 
 ### Release Cadence
-- Release plans (`MAJOR` / `MINOR`, statuses: `DRAFT` → `PRODUCTION_LIVE`)
+- Release plans (`MAJOR` / `MINOR`, full status lifecycle through to `PRODUCTION_LIVE`)
 - Sprint calendars with auto-generation
-- Milestone tracking (`BACKLOG_GROOMING`, `CODE_FREEZE`, `GO_NO_GO`, `PRODUCTION_LIVE`, etc.)
 - Pre-dev milestone types support
 
 ### Productivity
@@ -176,17 +194,87 @@ PMT/
 - Queryable by date range, project, and team
 
 ### Headcount
-- Headcount records per project/team
-- Configurable headcount settings
-- Reporting and export
+- Monthly headcount records with opening/closing/added/removed/planned counts
+- **Staffing Projection chart** – stacked bar (Active + Open Positions) + dashed Target line, with forward/back-fill for missing months
+- **Waterfall chart** – net headcount change over time
+- Configurable window (past months / future months) saved per project
+- KPI stat cards: Total HC, Added, Removed, Open Roles, Target HC
+- Export to Excel/CSV/PDF
+
+### Sprint Metrics *(new)*
+- Log per-sprint story state and bug state count snapshots
+- Donut charts for story states and bug states (colours configurable per project)
+- Snapshot history table with edit/delete
+- `GET /sprint-metrics/latest` — latest snapshot per project/team
+
+### Leaves *(new)*
+- Log leave records per user with type (`PLANNED`, `UNPLANNED`, `SICK`, custom), start/end dates, half-day flag
+- Date range filter for weekly/monthly overlap queries
+- Autocomplete user picker
+
+### Weekly Status Report (WSR) *(new)*
+- **Configuration** – Per-project settings stored in `WsrConfig`:
+  - Section visibility toggles and custom titles (Staffing, Sprint Productivity, Roadmap, Done/Planned, Achieved, Leaves, Appreciation, Risk/Concern)
+  - Configurable story state keys/labels/colours, bug state keys/labels/colours, leave type keys/labels
+- **Notes** – Inline click-to-edit text sections with auto-save debounce, persisted in `WeeklyReport` model keyed by `projectId + weekOf`
+- **Assembly** – `GET /wsr/report` assembles live data from all modules for a given week:
+  - **Staffing** – Headcount time-series chart using the same window as the Headcount module (`headcountPastMonths`/`headcountFutureMonths`). Solid bars = actual months; lighter bars = projected.
+  - **Sprint Productivity** – Story and bug donut charts from the latest sprint snapshot
+  - **Roadmap** – Full Gantt timeline from `GET /roadmap/gantt`, including release hierarchy and status colours
+  - **Leaves** – Table of leaves overlapping the selected week
+- **Export** – WSR data included in Excel (5 sheets), CSV, and PDF exports
 
 ### Dashboard
 - Aggregated KPIs across all modules
-- ECharts visualizations (bar, stacked bar, line, area, pie, donut, waterfall, scatter, Gantt)
+- ECharts visualizations: bar, stacked bar, line, area, pie, donut, waterfall, scatter, Gantt
+
+### Exports
+- Excel (`.xlsx`), CSV, and PDF export for all major modules
+- WSR export includes: Staffing, Sprint Productivity, Roadmap, Leaves, WSR Notes sheets
 
 ### Saved Views
 - Persist custom chart configurations and filter sets
 - Share views with other users
+
+---
+
+## Database Schema
+
+The Prisma schema (`apps/backend/prisma/schema.prisma`) defines the following main models:
+
+| Model | Table | Description |
+|---|---|---|
+| `User` | `users` | Application users |
+| `Role` | `roles` | RBAC roles |
+| `Permission` | `permissions` | Granular permission keys |
+| `Project` | `projects` | Projects with HC window settings |
+| `ProjectMember` | `project_members` | User–project membership |
+| `Team` | `teams` | Teams within projects |
+| `Feature` | `features` | Roadmap feature items |
+| `ReleasePlan` | `release_plans` | Release definitions |
+| `Sprint` | `sprints` | Sprint calendars |
+| `Milestone` | `milestones` | Sprint/release milestones |
+| `ProductivityRecord` | `productivity_records` | Productivity entries |
+| `HeadcountRecord` | `headcount_records` | Monthly HC records |
+| `SprintStateSnapshot` | `sprint_state_snapshots` | Sprint story/bug state counts |
+| `LeaveRecord` | `leave_records` | Employee leave records |
+| `WsrConfig` | `wsr_configs` | Per-project WSR configuration |
+| `WeeklyReport` | `weekly_reports` | WSR weekly notes (keyed by project + weekOf) |
+| `AuditLog` | `audit_logs` | System audit trail |
+| `SavedView` | `saved_views` | Persisted user views |
+
+### Key migrations
+| Migration | Description |
+|---|---|
+| `20260421060544_init` | Initial schema — all core models |
+| `20260421084711_add_phase_offsets` | Phase offset fields on milestones |
+| `20260421095139_make_project_optional` | Optional project relation on several models |
+| `20260421145801_add_project_members` | ProjectMember model |
+| `20260421160621_add_headcount_settings` | `headcountPastMonths` / `headcountFutureMonths` on Project |
+| `20260422061630_phase4_audit_log_integrity` | Audit log integrity fields |
+| `20260422071831_feature_timeline` | Feature `plannedStart` / `plannedEnd` dates |
+| `20260423062731_add_pre_dev_milestone_types` | Pre-dev milestone enum values |
+| `20260504152318_add_sprint_metrics_leaves_wsr` | `SprintStateSnapshot`, `LeaveRecord`, `WsrConfig`, `WeeklyReport` models |
 
 ---
 
@@ -279,7 +367,7 @@ Run database migrations and optionally seed with demo data:
 # Run all migrations
 npm run db:migrate
 
-# Seed the database with demo users, projects, and data
+# Seed the database with demo users, projects, roles and permissions
 npm run db:seed
 ```
 
@@ -288,6 +376,8 @@ Or use the automated setup script which runs both in sequence:
 ```bash
 npm run db:setup
 ```
+
+> **Note:** The seed script creates default roles (`SUPER_ADMIN`, `ADMIN`, `PROJECT_MANAGER`, `TEAM_LEAD`, `DEVELOPER`, `VIEWER`) with full permission sets including `sprint_metrics`, `leaves`, and `wsr` resources.
 
 ---
 
@@ -388,6 +478,37 @@ http://localhost:3001/api
 
 All endpoints are documented with request/response schemas, authentication requirements, and example payloads.
 
+### Key API Endpoints
+
+| Module | Method | Path | Description |
+|---|---|---|---|
+| Auth | POST | `/auth/login` | Obtain JWT tokens |
+| Auth | POST | `/auth/refresh` | Refresh access token |
+| Auth | POST | `/auth/logout` | Revoke refresh token |
+| Projects | GET/POST | `/projects` | List / create projects |
+| Headcount | GET | `/headcount/analytics/time-series` | HC data for projection chart |
+| Headcount | GET | `/headcount/analytics/waterfall` | Net change waterfall data |
+| Headcount | GET | `/headcount/analytics/summary` | Current HC KPI summary |
+| Sprint Metrics | POST | `/sprint-metrics` | Log sprint snapshot |
+| Sprint Metrics | GET | `/sprint-metrics` | List snapshots `{ items, total, page, limit }` |
+| Sprint Metrics | GET | `/sprint-metrics/latest` | Latest snapshot per project/team |
+| Leaves | POST | `/leaves` | Log a leave record |
+| Leaves | GET | `/leaves` | List leave records (plain array) |
+| WSR | GET | `/wsr/config` | Get WSR configuration |
+| WSR | PUT | `/wsr/config` | Upsert WSR configuration |
+| WSR | POST | `/wsr/config/reset` | Reset config to defaults |
+| WSR | GET/PUT | `/wsr/notes` | Get / upsert weekly report notes |
+| WSR | GET | `/wsr/report` | Assemble full WSR for a given week |
+| Roadmap | GET | `/roadmap/gantt` | Gantt rows with children & milestones |
+| Exports | POST | `/exports/excel` | Generate Excel export |
+| Exports | POST | `/exports/csv` | Generate CSV export |
+| Exports | POST | `/exports/pdf` | Generate PDF export |
+
+> **Response envelope note:**
+> - Most endpoints: `{ data: T[], meta: { total, page, limit, totalPages } }`
+> - `GET /leaves`: plain `LeaveRecord[]` array (no wrapper)
+> - `GET /sprint-metrics`: `{ items: T[], total, page, limit }` (uses `items` key)
+
 ---
 
 ## Testing
@@ -446,6 +567,7 @@ cd apps/frontend && npm run test:coverage
 | `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh token expiry |
 | `COOKIE_SECRET` | `your_cookie_secret_min_32_chars` | Cookie signing secret |
 | `CSRF_SECRET` | `your_csrf_secret_min_32_chars` | CSRF token secret |
+| `EXPORT_STORAGE_PATH` | `/tmp/pmt-exports` | Directory for generated export files |
 
 ### `apps/frontend/.env`
 
