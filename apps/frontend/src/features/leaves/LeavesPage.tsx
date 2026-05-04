@@ -14,14 +14,13 @@ import { useProject } from '../../context/ProjectContext';
 import { EmptyState } from '../../components/common/EmptyState';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 
-function useTeamMembers(projectId?: string) {
+function useTeamMembers() {
   return useQuery({
-    queryKey: ['team-members', projectId],
+    queryKey: ['team-members'],
     queryFn: () =>
       import('../../services/api').then(({ api }) =>
-        api.get('/users', { params: { projectId } }).then((r: { data: { items: { id: string; firstName: string; lastName: string; email: string }[] } }) => r.data.items ?? []),
+        api.get('/users', { params: { limit: 200 } }).then((r: { data: { items: { id: string; firstName: string; lastName: string; email: string }[] } }) => r.data.items ?? []),
       ),
-    enabled: !!projectId,
   });
 }
 
@@ -36,7 +35,7 @@ function LeaveDialog({ open, onClose, initial }: { open: boolean; onClose: () =>
     queryFn: () => wsrService.getConfig(activeProject!.id),
     enabled: !!activeProject,
   });
-  const { data: members = [] } = useTeamMembers(activeProject?.id);
+  const { data: members = [] } = useTeamMembers();
 
   const leaveTypes = config?.leaveTypeConfig ?? [
     { key: 'PLANNED', label: 'Planned Leave' },
