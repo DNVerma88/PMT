@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Box,
+  Button,
   Typography,
   Alert,
   Paper,
@@ -16,13 +17,14 @@ import {
   Tab,
   Tabs,
 } from '@mui/material';
-import { AccountTree, Close, FilterList } from '@mui/icons-material';
+import { AccountTree, Close, FileDownload, FilterList } from '@mui/icons-material';
 import ReactECharts from 'echarts-for-react';
 import { useRoadmapGantt, useRoadmapSummary } from './useRoadmap';
 import { EmptyState } from '../../components/common/EmptyState';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { useProject } from '../../context/ProjectContext';
 import { FeatureTimeline } from './FeatureTimeline';
+import { ExportDialog } from '../exports/ExportsPage';
 
 const STATUS_COLOR: Record<string, string> = {
   DRAFT: '#9e9e9e',
@@ -120,6 +122,7 @@ export function RoadmapPage() {
   const [tab, setTab] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedRow, setSelectedRow] = useState<any>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const { activeProject } = useProject();
 
   const { data: rows, isLoading, error } = useRoadmapGantt(
@@ -138,12 +141,15 @@ export function RoadmapPage() {
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2} flexWrap="wrap" gap={1}>
         <Typography variant="h4" fontWeight={700}>Roadmap</Typography>
-        <Stack direction="row" gap={1}>
+        <Stack direction="row" gap={1} alignItems="center">
           <Chip label={`${totalPlanned} Planned`} color="primary" size="small" variant="outlined" />
           <Chip label={`${totalInProgress} In Progress`} color="warning" size="small" variant="outlined" />
           <Chip label={`${totalCompleted} Completed`} color="success" size="small" variant="outlined" />
+          <Button variant="outlined" size="small" startIcon={<FileDownload />} onClick={() => setExportOpen(true)}>Export</Button>
         </Stack>
       </Stack>
+
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultReportType="roadmap" projectId={activeProject?.id} />
 
       {/* ── Tabs ── */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>

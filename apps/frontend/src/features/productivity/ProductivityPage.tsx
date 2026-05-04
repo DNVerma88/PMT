@@ -5,7 +5,7 @@ import {
   MenuItem, Select, InputLabel, FormControl, ToggleButton, ToggleButtonGroup,
   CircularProgress,
 } from '@mui/material';
-import { Assessment, Speed, Category, Add } from '@mui/icons-material';
+import { Assessment, Speed, Category, Add, FileDownload } from '@mui/icons-material';
 import ReactECharts from 'echarts-for-react';
 import { useVelocityTrend, useWorkTypeBreakdown, useMetricDefs, useCreateProductivityRecord } from './useProductivity';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { useProject } from '../../context/ProjectContext';
 import { useSprintCalendars } from '../release-cadence/useReleaseCadence';
 import { useSprintCalendarDetail } from '../roadmap/useFeatures';
+import { ExportDialog } from '../exports/ExportsPage';
 
 const WORK_TYPE_COLORS = ['#1976d2', '#388e3c', '#f57c00', '#d32f2f', '#7b1fa2', '#0288d1'];
 const WORK_TYPES = ['FEATURE', 'BUG_FIX', 'TECH_DEBT', 'DOCUMENTATION', 'TESTING', 'INFRASTRUCTURE', 'OTHER'];
@@ -429,6 +430,7 @@ function WorkTypeChart({ data }: { data: any[] }) {
 
 export function ProductivityPage() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const { activeProject } = useProject();
   const { data: velocity, isLoading: velLoading, error: velError } = useVelocityTrend(activeProject ? { projectId: activeProject.id } : undefined);
   const { data: workType, isLoading: wtLoading, error: wtError } = useWorkTypeBreakdown(activeProject ? { projectId: activeProject.id } : undefined);
@@ -442,9 +444,12 @@ export function ProductivityPage() {
         <Typography variant="h4" fontWeight={700}>Productivity Dashboard</Typography>
         <Stack direction="row" gap={1} alignItems="center">
           <Chip icon={<Assessment />} label={`${metricDefs?.length ?? 0} Metrics Tracked`} color="primary" variant="outlined" />
+          <Button variant="outlined" size="small" startIcon={<FileDownload />} onClick={() => setExportOpen(true)}>Export</Button>
           <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>Log Record</Button>
         </Stack>
       </Stack>
+
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultReportType="productivity" projectId={activeProject?.id} />
 
       {(velError || wtError) && (
         <Alert severity="error" sx={{ mb: 2 }}>Failed to load productivity data</Alert>

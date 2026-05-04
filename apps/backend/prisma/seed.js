@@ -19,6 +19,8 @@ const RESOURCES = [
     'saved_views',
     'audit_logs',
     'exports',
+    'portfolio',
+    'integrations',
 ];
 const ACTIONS = ['create', 'read', 'update', 'delete', 'manage', 'export', 'share'];
 const ROLE_PERMISSIONS = {
@@ -37,6 +39,8 @@ const ROLE_PERMISSIONS = {
         { resource: 'headcount', actions: ['create', 'read', 'update'] },
         { resource: 'saved_views', actions: ['create', 'read', 'update', 'delete', 'share'] },
         { resource: 'exports', actions: ['export'] },
+        { resource: 'portfolio', actions: ['read'] },
+        { resource: 'integrations', actions: ['read'] },
     ],
     PROJECT_MANAGER: [
         { resource: 'projects', actions: ['read'] },
@@ -48,6 +52,8 @@ const ROLE_PERMISSIONS = {
         { resource: 'headcount', actions: ['read'] },
         { resource: 'saved_views', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'exports', actions: ['export'] },
+        { resource: 'portfolio', actions: ['read'] },
+        { resource: 'integrations', actions: ['read'] },
     ],
     ENGINEERING_MANAGER: [
         { resource: 'projects', actions: ['read'] },
@@ -59,6 +65,8 @@ const ROLE_PERMISSIONS = {
         { resource: 'headcount', actions: ['create', 'read', 'update'] },
         { resource: 'saved_views', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'exports', actions: ['export'] },
+        { resource: 'portfolio', actions: ['read'] },
+        { resource: 'integrations', actions: ['read'] },
     ],
     TEAM_LEAD: [
         { resource: 'projects', actions: ['read'] },
@@ -70,6 +78,7 @@ const ROLE_PERMISSIONS = {
         { resource: 'headcount', actions: ['read'] },
         { resource: 'saved_views', actions: ['create', 'read', 'update'] },
         { resource: 'exports', actions: ['export'] },
+        { resource: 'portfolio', actions: ['read'] },
     ],
     VIEWER: [
         { resource: 'projects', actions: ['read'] },
@@ -81,6 +90,7 @@ const ROLE_PERMISSIONS = {
         { resource: 'headcount', actions: ['read'] },
         { resource: 'saved_views', actions: ['read'] },
         { resource: 'exports', actions: ['export'] },
+        { resource: 'portfolio', actions: ['read'] },
     ],
 };
 async function main() {

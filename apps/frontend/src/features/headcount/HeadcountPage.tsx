@@ -5,13 +5,14 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, InputAdornment,
   Slider, useMediaQuery, useTheme,
 } from '@mui/material';
-import { Groups, TrendingUp, TrendingDown, PersonAdd, WorkOutline, Add, InfoOutlined, History, Schedule, OpenInFull, CloseFullscreen } from '@mui/icons-material';
+import { Groups, TrendingUp, TrendingDown, PersonAdd, WorkOutline, Add, FileDownload, InfoOutlined, History, Schedule, OpenInFull, CloseFullscreen } from '@mui/icons-material';
 import ReactECharts from 'echarts-for-react';
 import { useHeadcountSummary, useHeadcountWaterfall, useHeadcountTimeSeries, useCreateHeadcountRecord } from './useHeadcount';
 import { useUpdateProject } from '../projects/useProjects';
 import { EmptyState } from '../../components/common/EmptyState';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { useProject } from '../../context/ProjectContext';
+import { ExportDialog } from '../exports/ExportsPage';
 
 function CreateHeadcountDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const theme = useTheme();
@@ -525,6 +526,7 @@ function WaterfallChart({ data }: { data: any[] }) {
 
 export function HeadcountPage() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const { activeProject, updateActiveProject } = useProject();
   const updateProject = useUpdateProject();
 
@@ -582,8 +584,13 @@ export function HeadcountPage() {
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
         <Typography variant="h4" fontWeight={700}>Headcount &amp; Staffing</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>Log Record</Button>
+        <Stack direction="row" gap={1} alignItems="center">
+          <Button variant="outlined" size="small" startIcon={<FileDownload />} onClick={() => setExportOpen(true)}>Export</Button>
+          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>Log Record</Button>
+        </Stack>
       </Stack>
+
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultReportType="headcount" projectId={activeProject?.id} />
 
       {sumError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load headcount data</Alert>}
 
